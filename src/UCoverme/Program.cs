@@ -1,0 +1,30 @@
+﻿using System.Diagnostics;
+using McMaster.Extensions.CommandLineUtils;
+using UCoverme.Commands;
+using UCoverme.Utils;
+
+namespace UCoverme
+{
+    static class Program
+    {
+        static void Main(string[] args)
+        {
+            var app = new CommandLineApplication
+            {
+                Name = "ucoverme"
+            };
+            app.HelpOption("-?|--help|-h");
+
+            app.AddCommand(UCovermeCommand.BuildModelCommand());
+            app.AddCommand(UCovermeCommand.InstrumentCommand());
+
+            app.OnExecute(() =>
+            {
+                app.ShowHelp();
+                return 0;
+            });
+
+            app.Execute(args);
+        }
+    }
+}

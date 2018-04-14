@@ -5,13 +5,15 @@ VisualStudioVersion = 15.0.27428.2027
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{13D016EA-39A4-4A00-9A3B-EFC9725EC62F}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UCoverme", "src\UCoverme\UCoverme.csproj", "{2A2AAA05-3AB3-4EC1-8C84-84F5A9ABA998}"
+EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "UCoverme.DataCollector", "src\UCoverme.DataCollector\UCoverme.DataCollector.csproj", "{8991449C-5923-4CC5-AC94-756F2B4164B6}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{2080555E-F079-4565-9C8A-BDD6D8FEF556}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestLibrary", "test\TestLibrary\TestLibrary.csproj", "{1B277269-88A5-42CB-B778-F08D36681934}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestLibrary.Tests.Nunit", "test\TestLibrary.Tests.Nunit\TestLibrary.Tests.Nunit.csproj", "{99B98BB8-1776-43CD-859A-673A82B6BCCD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestLibrary.Tests.Nunit", "test\TestLibrary.Tests.Nunit\TestLibrary.Tests.Nunit.csproj", "{99B98BB8-1776-43CD-859A-673A82B6BCCD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -19,6 +21,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2A2AAA05-3AB3-4EC1-8C84-84F5A9ABA998}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A2AAA05-3AB3-4EC1-8C84-84F5A9ABA998}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A2AAA05-3AB3-4EC1-8C84-84F5A9ABA998}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A2AAA05-3AB3-4EC1-8C84-84F5A9ABA998}.Release|Any CPU.Build.0 = Release|Any CPU
 		{8991449C-5923-4CC5-AC94-756F2B4164B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8991449C-5923-4CC5-AC94-756F2B4164B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8991449C-5923-4CC5-AC94-756F2B4164B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -36,6 +42,7 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{2A2AAA05-3AB3-4EC1-8C84-84F5A9ABA998} = {13D016EA-39A4-4A00-9A3B-EFC9725EC62F}
 		{8991449C-5923-4CC5-AC94-756F2B4164B6} = {13D016EA-39A4-4A00-9A3B-EFC9725EC62F}
 		{1B277269-88A5-42CB-B778-F08D36681934} = {2080555E-F079-4565-9C8A-BDD6D8FEF556}
 		{99B98BB8-1776-43CD-859A-673A82B6BCCD} = {2080555E-F079-4565-9C8A-BDD6D8FEF556}
