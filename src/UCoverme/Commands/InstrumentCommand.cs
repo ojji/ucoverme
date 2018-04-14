@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using McMaster.Extensions.CommandLineUtils;
 using UCoverme.Instrumentation;
+using UCoverme.Model;
 using UCoverme.ModelBuilder;
 using UCoverme.Options;
 using UCoverme.Utils;
@@ -42,8 +44,12 @@ namespace UCoverme.Commands
                 throw new ArgumentException("No target assembly matched the specified pattern.");
             }
 
-            var assemblyModels =
-                targetPaths.Select(path => AssemblyModelBuilder.Build(path, _disableDefaultFilters.HasValue())).ToList();
+            List<AssemblyModel> assemblyModels = new List<AssemblyModel>();
+            foreach (var path in targetPaths)
+            {
+                var model = AssemblyModelBuilder.Build(path, _disableDefaultFilters.HasValue());
+                assemblyModels.Add(model);
+            }
 
             Console.WriteLine("Parsed assemblies:");
             foreach (var model in assemblyModels)
@@ -65,10 +71,8 @@ namespace UCoverme.Commands
                 }
                 else
                 {
-                    using (var instrumenter = new Instrumenter(model))
-                    {
-                        instrumenter.Instrument();
-                    }
+                    var instrumenter = new Instrumenter(model);
+                    instrumenter.Instrument(new Progress<string>(Console.WriteLine));
                 }
 
                 Console.WriteLine($"{model.AssemblyName} - {model.AssemblyPaths.OriginalAssemblyPath}");

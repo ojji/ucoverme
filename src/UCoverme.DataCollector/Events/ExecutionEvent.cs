@@ -37,16 +37,4 @@ namespace UCoverme.DataCollector.Events
             return new BranchExitedEvent(methodId, branchId);
         }
     }
-
-    public class BranchExitedEvent : ExecutionEvent
-    {
-        public int MethodId { get; }
-        public int BranchId { get; }
-
-        public BranchExitedEvent(int methodId, int branchId) : base(ExecutionEventType.BranchExited)
-        {
-            MethodId = methodId;
-            BranchId = branchId;
-        }
-    }
 }

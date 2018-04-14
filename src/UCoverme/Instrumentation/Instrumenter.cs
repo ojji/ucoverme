@@ -12,10 +12,9 @@ using UCoverme.Utils;
 
 namespace UCoverme.Instrumentation
 {
-    public class Instrumenter : IDisposable
+    public class Instrumenter
     {
         private readonly AssemblyModel _assemblyModel;
-        private readonly AssemblyDefinition _assemblyDefinition;
         private readonly Type _dataCollectorType = typeof(UCovermeDataCollector);
 
         // these are the references to the data collector assembly, be careful!
@@ -29,35 +28,35 @@ namespace UCoverme.Instrumentation
         public Instrumenter(AssemblyModel assemblyModel)
         {
             _assemblyModel = assemblyModel;
-
             CreateTempCopies(_assemblyModel.AssemblyPaths);
             CopyDataCollectorAssembly(_assemblyModel.AssemblyPaths);
-
-            Console.WriteLine($"Isntrumnenter::ctor() { _assemblyModel.AssemblyPaths.TempAssemblyPath}");
-            _assemblyDefinition = AssemblyDefinition.ReadAssembly(_assemblyModel.AssemblyPaths.TempAssemblyPath, new ReaderParameters
-            {
-                ReadSymbols = true
-            });
         }
 
-        public void Instrument()
+        public void Instrument(IProgress<string> progress)
         {
-            Console.WriteLine("Instrumenting assembly...");
-
-            ImportAndSetInstrumentationMethodReferences(_assemblyDefinition);
-
-            foreach (var method in _assemblyModel.Classes.SelectMany(c => c.Methods))
+            using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(_assemblyModel.AssemblyPaths.TempAssemblyPath,
+                new ReaderParameters
+                {
+                    ReadSymbols = true
+                }))
             {
-                Console.WriteLine($"\t{method.Name}");
-                InstrumentMethod(method);
+                progress.Report($"Instrumenting assembly {_assemblyModel.AssemblyName}...");
+
+                ImportAndSetInstrumentationMethodReferences(assemblyDefinition);
+
+                foreach (var method in _assemblyModel.Classes.SelectMany(c => c.Methods))
+                {
+                    progress.Report($"\t{method.Name}");
+                    InstrumentMethod(assemblyDefinition, method);
+                }
+
+                assemblyDefinition.Write(_assemblyModel.AssemblyPaths.OriginalAssemblyPath, new WriterParameters
+                 {
+                     WriteSymbols = true
+                 });
+
+                progress.Report($"Done, assembly written to {_assemblyModel.AssemblyPaths.OriginalAssemblyPath}.");
             }
-
-            _assemblyDefinition.Write(_assemblyModel.AssemblyPaths.OriginalAssemblyPath + ".tmp", new WriterParameters
-            {
-                WriteSymbols = true
-            });
-
-            Console.WriteLine($"Done, assembly written to {_assemblyModel.AssemblyPaths.OriginalAssemblyPath}.");
         }
 
         private void ImportAndSetInstrumentationMethodReferences(AssemblyDefinition assemblyDefinition)
@@ -68,19 +67,24 @@ namespace UCoverme.Instrumentation
             _testExecutionDataTypeReference = assemblyDefinition.MainModule.ImportReference(testExecutionDataType);
 
             var getDataCollectorMethodInfo = _dataCollectorType.GetMethod("GetDataCollector");
-            _getDataCollectorMethodReference = assemblyDefinition.MainModule.ImportReference(getDataCollectorMethodInfo);
+            _getDataCollectorMethodReference =
+                assemblyDefinition.MainModule.ImportReference(getDataCollectorMethodInfo);
 
             // BranchEntered
-            var branchEnteredMethodInfo = testExecutionDataType.GetMethod("BranchEntered", new[] { typeof(int), typeof(int) });
+            var branchEnteredMethodInfo =
+                testExecutionDataType.GetMethod("BranchEntered", new[] {typeof(int), typeof(int)});
             _branchEnteredMethodReference = assemblyDefinition.MainModule.ImportReference(branchEnteredMethodInfo);
 
             // BranchExited
-            var branchExitedMethodInfo = testExecutionDataType.GetMethod("BranchExited", new[] { typeof(int), typeof(int) });
+            var branchExitedMethodInfo =
+                testExecutionDataType.GetMethod("BranchExited", new[] {typeof(int), typeof(int)});
             _branchExitedMethodReference = assemblyDefinition.MainModule.ImportReference(branchExitedMethodInfo);
 
             // SequencePointHit
-            var sequencePointHitMethodInfo = testExecutionDataType.GetMethod("SequencePointHit", new[] { typeof(int), typeof(int) });
-            _sequencePointHitMethodReference = assemblyDefinition.MainModule.ImportReference(sequencePointHitMethodInfo);
+            var sequencePointHitMethodInfo =
+                testExecutionDataType.GetMethod("SequencePointHit", new[] {typeof(int), typeof(int)});
+            _sequencePointHitMethodReference =
+                assemblyDefinition.MainModule.ImportReference(sequencePointHitMethodInfo);
         }
 
         private void CopyDataCollectorAssembly(AssemblyPaths assemblyPaths)
@@ -109,58 +113,107 @@ namespace UCoverme.Instrumentation
             File.Copy(assemblyPaths.OriginalPdbPath, assemblyPaths.TempPdbPath, true);
         }
 
-        private void InstrumentMethod(InstrumentedMethod method)
+        private void InstrumentMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method)
         {
-            var ilProcessor = GetILProcessorForMethod(method);
+            var ilProcessor = GetILProcessorForMethod(assemblyDefinition, method);
             ilProcessor.Body.InitLocals = true;
             ilProcessor.Body.SimplifyMacros();
 
             var testExecutionDataVariable = new VariableDefinition(_testExecutionDataTypeReference);
             ilProcessor.Body.Variables.Add(testExecutionDataVariable);
 
-            // this is the 'var collector = IDataCollector.GetDataCollector();' part
-            var getDataCollectorInstruction = ilProcessor.Create(OpCodes.Call, _getDataCollectorMethodReference);
-            var storeDataCollectorInstruction = ilProcessor.Create(OpCodes.Stloc, testExecutionDataVariable);
-
-            /* todo need to update this to instrument branches and sequencepoints
-            var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
-            var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, method.MethodId);
-            var entermethodCallInstruction = ilProcessor.Create(OpCodes.Callvirt, enterMethodReference);
-
-            var originalInstruction = ilProcessor.Body.Instructions[0];
-
-            ilProcessor.InsertAllBefore(originalInstruction,
-                getDataCollectorInstruction,
-                storeDataCollectorInstruction,
-                loadCollectorInstruction,
-                methodIdParameterInstruction,
-                entermethodCallInstruction);
-
-            UpdateInstructionReference(ilProcessor.Body,
-                originalInstruction, getDataCollectorInstruction);
-            */
-
-            #region Temp
-            /*
-            var originalInstruction = ilProcessor.Body.Instructions[0];
-            ilProcessor.InsertAllBefore(originalInstruction, getDataCollectorInstruction, storeDataCollectorInstruction);
-
-            UpdateInstructionReference(ilProcessor.Body,
-                originalInstruction, getDataCollectorInstruction);
-                */
-
+            ChangeTailCallsToNops(ilProcessor);
+            
             var originalInstructions = ilProcessor.Body.Instructions.ToArray();
             List<ArraySegment<Instruction>> branchInstructions = GetBranchInstructions(originalInstructions, method);
-
+            InsertDataCollector(ilProcessor, testExecutionDataVariable, originalInstructions);
             InsertBranchStartInstrumentation(ilProcessor, testExecutionDataVariable, branchInstructions, method);
-
-            #endregion
-
+            InsertBranchEndInstrumentation(ilProcessor, testExecutionDataVariable, branchInstructions, method);
+            
             ilProcessor.Body.OptimizeMacros();
         }
 
-        private void InsertBranchStartInstrumentation(ILProcessor ilProcessor, VariableDefinition testExecutionDataVariable,
-            List<ArraySegment<Instruction>> branches, InstrumentedMethod method)
+        private void ChangeTailCallsToNops(ILProcessor ilProcessor)
+        {
+            foreach (var tailInstruction in ilProcessor.Body.Instructions.Where(i => i.OpCode == OpCodes.Tail))
+            {
+                ilProcessor.Replace(tailInstruction, ilProcessor.Create(OpCodes.Nop));
+            }
+        }
+
+        private void InsertDataCollector(ILProcessor ilProcessor, VariableDefinition testExecutionDataVariable,
+            Instruction[] originalInstructions)
+        {
+            var getDataCollectorInstruction = ilProcessor.Create(OpCodes.Call, _getDataCollectorMethodReference);
+            var storeDataCollectorInstruction = ilProcessor.Create(OpCodes.Stloc, testExecutionDataVariable);
+
+            var originalInstruction = originalInstructions[0];
+            ilProcessor.InsertAllBefore(originalInstruction,
+                getDataCollectorInstruction, 
+                storeDataCollectorInstruction);
+
+            UpdateInstructionReference(ilProcessor.Body, originalInstruction, getDataCollectorInstruction);
+        }
+
+        private void InsertBranchEndInstrumentation(ILProcessor ilProcessor, 
+            VariableDefinition testExecutionDataVariable, 
+            List<ArraySegment<Instruction>> branches, 
+            InstrumentedMethod method)
+        {
+            for (int i = 0; i < branches.Count; i++)
+            {
+                // We have to find the last instruction but be aware! 
+                // When the previous instruction is a prefix, we cannot insert the instrumentation code inbetween the two.
+                var startInstructionOffset = branches[i].Offset;
+                var endInstructionOffset = branches[i].Offset + branches[i].Count - 1;
+                Instruction endInstruction = branches[i].Array[endInstructionOffset];
+                Instruction previousInstruction = endInstructionOffset > startInstructionOffset ? 
+                    branches[i].Array[endInstructionOffset - 1] : 
+                    null;
+                while (previousInstruction != null && previousInstruction.OpCode.OpCodeType == OpCodeType.Prefix)
+                {
+                    endInstructionOffset--;
+                    endInstruction = previousInstruction;
+                    previousInstruction = endInstructionOffset > startInstructionOffset ?
+                    branches[i].Array[endInstructionOffset - 1] :
+                    null;
+                }
+
+                var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
+                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, method.MethodId);
+                var branchIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
+                var exitBranchInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchExitedMethodReference);
+
+                // todo: if the last instruction is a prefix, where should we place the instrumentation code? - for now just place it before
+                if (endInstruction.OpCode.FlowControl == FlowControl.Branch ||
+                    endInstruction.OpCode.FlowControl == FlowControl.Cond_Branch ||
+                    endInstruction.OpCode.FlowControl == FlowControl.Return ||
+                    endInstruction.OpCode.FlowControl == FlowControl.Throw ||
+                    endInstruction.OpCode.OpCodeType == OpCodeType.Prefix)
+                {
+                    ilProcessor.InsertAllBefore(endInstruction,
+                    loadCollectorInstruction,
+                    methodIdParameterInstruction,
+                    branchIdParameterInstruction,
+                    exitBranchInstruction);
+                }
+                else
+                {
+                    ilProcessor.InsertAllAfter(endInstruction,
+                    loadCollectorInstruction,
+                    methodIdParameterInstruction,
+                    branchIdParameterInstruction,
+                    exitBranchInstruction);
+                }
+
+                UpdateInstructionReference(ilProcessor.Body, endInstruction, loadCollectorInstruction);
+            }
+        }
+
+        private void InsertBranchStartInstrumentation(ILProcessor ilProcessor,
+            VariableDefinition testExecutionDataVariable,
+            List<ArraySegment<Instruction>> branches, 
+            InstrumentedMethod method)
         {
             for (int i = 0; i < branches.Count; i++)
             {
@@ -169,20 +222,20 @@ namespace UCoverme.Instrumentation
                 var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
                 var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, method.MethodId);
                 var branchIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
-                var entermethodCallInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchEnteredMethodReference);
+                var enterBranchInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchEnteredMethodReference);
 
                 ilProcessor.InsertAllBefore(originalInstruction,
                     loadCollectorInstruction,
                     methodIdParameterInstruction,
                     branchIdParameterInstruction,
-                    entermethodCallInstruction);
+                    enterBranchInstruction);
 
-                UpdateInstructionReference(ilProcessor.Body,
-                originalInstruction, loadCollectorInstruction);
+                UpdateInstructionReference(ilProcessor.Body, originalInstruction, loadCollectorInstruction);
             }
         }
 
-        private List<ArraySegment<Instruction>> GetBranchInstructions(Instruction[] instructions, InstrumentedMethod method)
+        private List<ArraySegment<Instruction>> GetBranchInstructions(Instruction[] instructions,
+            InstrumentedMethod method)
         {
             var branchInstructions = new List<ArraySegment<Instruction>>(method.Branches.Length);
             int currentBranch = 0;
@@ -193,7 +246,8 @@ namespace UCoverme.Instrumentation
             {
                 if (instructions[currentIdx].Offset == method.Branches[currentBranch].EndOffset)
                 {
-                    branchInstructions.Add(new ArraySegment<Instruction>(instructions, currentStartOffset, currentInstructionCount));
+                    branchInstructions.Add(new ArraySegment<Instruction>(instructions, currentStartOffset,
+                        currentInstructionCount));
                     currentBranch++;
                     currentInstructionCount = 1;
                     currentIdx++;
@@ -210,12 +264,13 @@ namespace UCoverme.Instrumentation
 
         private List<Instruction> GetBranchStartInstructions(InstrumentedMethod method, ILProcessor ilProcessor)
         {
-            return ilProcessor.Body.Instructions.Where(i => method.Branches.Any(m => m.StartOffset == i.Offset)).ToList();
+            return ilProcessor.Body.Instructions.Where(i => method.Branches.Any(m => m.StartOffset == i.Offset))
+                .ToList();
         }
 
-        private ILProcessor GetILProcessorForMethod(InstrumentedMethod method)
+        private ILProcessor GetILProcessorForMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method)
         {
-            var methodDefinition = _assemblyDefinition.MainModule
+            var methodDefinition = assemblyDefinition.MainModule
                 .GetTypes()
                 .SelectMany(t => t.GetInstrumentableMethods())
                 .FirstOrDefault(m =>
@@ -293,11 +348,6 @@ namespace UCoverme.Instrumentation
                     exceptionHandler.TryEnd = newInstruction;
                 }
             }
-        }
-
-        public void Dispose()
-        {
-            _assemblyDefinition?.Dispose();
         }
     }
 }

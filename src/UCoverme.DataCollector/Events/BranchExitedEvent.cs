@@ -1,11 +1,11 @@
 ﻿namespace UCoverme.DataCollector.Events
 {
-    public class BranchEnteredEvent : ExecutionEvent
+    public class BranchExitedEvent : ExecutionEvent
     {
         public int MethodId { get; }
         public int BranchId { get; }
 
-        public BranchEnteredEvent(int methodId, int branchId) : base(ExecutionEventType.BranchEntered)
+        public BranchExitedEvent(int methodId, int branchId) : base(ExecutionEventType.BranchExited)
         {
             MethodId = methodId;
             BranchId = branchId;
@@ -13,7 +13,7 @@
 
         public override string ToString()
         {
-            return $"Branch entered - #method: {MethodId} - #branch: {BranchId}";
+            return $"Branch exited - #method: {MethodId} - #branch: {BranchId}";
         }
     }
 }

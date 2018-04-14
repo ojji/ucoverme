@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using McMaster.Extensions.CommandLineUtils;
+﻿using McMaster.Extensions.CommandLineUtils;
 using UCoverme.Commands;
 using UCoverme.Utils;
 
@@ -15,7 +14,6 @@ namespace UCoverme
             };
             app.HelpOption("-?|--help|-h");
 
-            app.AddCommand(UCovermeCommand.BuildModelCommand());
             app.AddCommand(UCovermeCommand.InstrumentCommand());
 
             app.OnExecute(() =>

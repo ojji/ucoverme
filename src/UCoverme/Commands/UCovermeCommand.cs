@@ -18,11 +18,6 @@ namespace UCoverme.Commands
 
         public abstract void Execute();
 
-        public static UCovermeCommand BuildModelCommand()
-        {
-            return new BuildModelCommand();
-        }
-
         public static UCovermeCommand InstrumentCommand()
         {
             return new InstrumentCommand();

@@ -10,5 +10,10 @@
             MethodId = methodId;
             SequencePointId = sequencePointId;
         }
+
+        public override string ToString()
+        {
+            return $"Sequence point hit - #method: {MethodId} - #seq. point: {SequencePointId}";
+        }
     }
 }

@@ -3,37 +3,37 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Mono.Cecil;
-using Mono.Cecil.Cil;
 using UCoverme.Model;
 using UCoverme.Utils;
 
 namespace UCoverme.ModelBuilder
 {
-    public class AssemblyModelBuilder : IDisposable
+    public class AssemblyModelBuilder
     {
         public string AssemblyName { get; }
         public AssemblyPaths AssemblyPaths { get; }
 
-        private readonly AssemblyDefinition _assemblyDefinition;
         private readonly Dictionary<int, MethodDefinition> _methodMapping;
 
         private AssemblyModelBuilder(AssemblyPaths assemblyPaths, bool shouldReadSymbols)
         {
             AssemblyPaths = assemblyPaths;
 
-            _assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPaths.OriginalAssemblyPath,
-                new ReaderParameters()
+            using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPaths.OriginalAssemblyPath,
+                new ReaderParameters
                 {
                     ReadSymbols = shouldReadSymbols
-                });
-            AssemblyName = _assemblyDefinition.FullName;
-            _methodMapping = new Dictionary<int, MethodDefinition>();
-            BuildMethodMappings();
+                }))
+            {
+                AssemblyName = assemblyDefinition.FullName;
+                _methodMapping = new Dictionary<int, MethodDefinition>();
+                BuildMethodMappings(assemblyDefinition);
+            }
         }
 
-        private void BuildMethodMappings()
+        private void BuildMethodMappings(AssemblyDefinition assemblyDefinition)
         {
-            BuildMethodMappings(_assemblyDefinition.MainModule.Types);
+            BuildMethodMappings(assemblyDefinition.MainModule.Types);
         }
 
         private void BuildMethodMappings(IEnumerable<TypeDefinition> typeDefinitions)
@@ -113,59 +113,56 @@ namespace UCoverme.ModelBuilder
             return sequencePoints;
         }
 
-        public void Dispose()
-        {
-            _assemblyDefinition?.Dispose();
-        }
-
         public static AssemblyModel Build(string assemblyPath, bool disableDefaultFilters)
         {
             var shouldReadSymbols = IsInstrumentable(assemblyPath, disableDefaultFilters, out var skipReason);
-            using (var assemblyBuilder =
-                new AssemblyModelBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), shouldReadSymbols))
-            {
-                var assemblyModel = new AssemblyModel(
-                    assemblyBuilder.AssemblyName,
-                    assemblyBuilder.AssemblyPaths,
-                    assemblyBuilder.GetFiles(),
-                    assemblyBuilder.GetClasses());
+            var assemblyBuilder =
+                new AssemblyModelBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), shouldReadSymbols);
 
-                if (skipReason != SkipReason.NoSkip)
-                {
-                    assemblyModel.SkipFromInstrumentation(skipReason);
-                }
-                return assemblyModel;
+            var assemblyModel = new AssemblyModel(
+                assemblyBuilder.AssemblyName,
+                assemblyBuilder.AssemblyPaths,
+                assemblyBuilder.GetFiles(),
+                assemblyBuilder.GetClasses());
+
+            if (skipReason != SkipReason.NoSkip)
+            {
+                assemblyModel.SkipFromInstrumentation(skipReason);
             }
+
+            return assemblyModel;
         }
 
         private static bool IsInstrumentable(string assemblyPath, bool disableDefaultFilters, out SkipReason skipReason)
         {
-            // its a test framework assembly
-            var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
-            if (TestFrameworkAssemblies.Any(testFrameworkAssemblyName =>
-                assembly.FullName.StartsWith(testFrameworkAssemblyName)))
+            
+            using (var assembly = AssemblyDefinition.ReadAssembly(assemblyPath))
             {
-                skipReason = SkipReason.TestAssembly;
-                return false;
-            }
+                // its a test framework assembly
+                if (TestFrameworkAssemblies.Any(testFrameworkAssemblyName => assembly.FullName.StartsWith(testFrameworkAssemblyName)))
+                {
+                    skipReason = SkipReason.TestAssembly;
+                    return false;
+                }
 
-            // its one of the default disabled assemblies
-            if (!disableDefaultFilters && MatchesDisabledAssemblies(assembly.FullName))
-            {
-                skipReason = SkipReason.Filter;
-                return false;
-            }
+                // its one of the default disabled assemblies
+                if (!disableDefaultFilters && MatchesDisabledAssemblies(assembly.FullName))
+                {
+                    skipReason = SkipReason.Filter;
+                    return false;
+                }
 
-            // its a temp file, or a file with no symbol files
-            if (Path.GetFileNameWithoutExtension(assemblyPath).EndsWith($"{AssemblyPaths.TempFilenameString}") ||
-                !File.Exists(Path.ChangeExtension(assemblyPath, "pdb")))
-            {
-                skipReason = SkipReason.NoPdb;
-                return false;
-            }
+                // its a temp file, or a file with no symbol files
+                if (Path.GetFileNameWithoutExtension(assemblyPath).EndsWith($"{AssemblyPaths.TempFilenameString}") ||
+                    !File.Exists(Path.ChangeExtension(assemblyPath, "pdb")))
+                {
+                    skipReason = SkipReason.NoPdb;
+                    return false;
+                }
 
-            skipReason = SkipReason.NoSkip;
-            return true;
+                skipReason = SkipReason.NoSkip;
+                return true;
+            }
         }
 
         private static bool MatchesDisabledAssemblies(string fullName)
