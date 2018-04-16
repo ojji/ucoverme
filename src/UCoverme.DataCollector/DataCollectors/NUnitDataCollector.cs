@@ -1,16 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel.DataCollector.InProcDataCollector;
-using UCoverme.DataCollector.Utils;
 
 namespace UCoverme.DataCollector.DataCollectors
 {
     public class NUnitDataCollector : IDataCollector
     {
-        private static string _log = Path.Combine(Directory.GetCurrentDirectory(), "nunit-collector.txt");
         private static Type _testContextType;
         private static Type _testAdapterType;
         private static PropertyInfo _currentContextPropertyInfo;
@@ -21,14 +18,6 @@ namespace UCoverme.DataCollector.DataCollectors
         private static readonly ConcurrentDictionary<string, TestExecutionData> TestExecutions = new ConcurrentDictionary<string, TestExecutionData>();
 
         public string DataCollectorName => "nunit";
-
-        public NUnitDataCollector()
-        {
-            lock (LockObject)
-            {
-                _log.Empty();
-            }
-        }
 
         public TestExecutionData GetDataCollector()
         {
