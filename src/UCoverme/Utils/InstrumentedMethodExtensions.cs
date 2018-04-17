@@ -60,7 +60,7 @@ namespace UCoverme.Utils
                 .SkipWhile(i => i.Offset < branch.StartOffset)
                 .TakeWhile(i => i.Offset <= branch.EndOffset);
 
-            var sequencePointsDictionary = sequencePoints.ToDictionary(sp => sp.Offset);
+            var sequencePointsDictionary = sequencePoints.ToDictionary(sp => sp.StartOffset);
             foreach (var instruction in branchInstructions)
             {
                 if (sequencePointsDictionary.ContainsKey(instruction.Offset))
@@ -72,5 +72,4 @@ namespace UCoverme.Utils
             }
         }
     }
-
 }

@@ -12,8 +12,7 @@ namespace UCoverme.Options
     public class PathOption : CommandOption<string[]>
     {
         public PathOption(string template) : base(PathOptionValueParser.Singleton, template, CommandOptionType.SingleValue)
-        {
-            
+        {   
         }
 
         private class PathOptionValueParser : IValueParser<string[]>

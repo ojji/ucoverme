@@ -1,6 +1,6 @@
 ﻿namespace UCoverme.Model
 {
-    public class Branch
+    public class Branch : ICodeSegment
     {
         public int Id { get; }
         public int StartOffset { get; }

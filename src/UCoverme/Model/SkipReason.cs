@@ -5,6 +5,7 @@
         NoSkip,
         Filter,
         TestAssembly,
-        NoPdb
+        NoPdb,
+        BackupFile
     }
 }

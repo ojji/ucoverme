@@ -8,32 +8,56 @@ using UCoverme.ModelBuilder.Nodes;
 
 namespace UCoverme.ModelBuilder
 {
-    public class MethodGraph
+    public class InstrumentedMethodBuilder
     {
         public Condition[] Conditions { get; }
         public Branch[] Branches { get; }
         public Instruction[] Instructions { get; }
-        public SequencePoint[] SequencePoints { get; }
+        public InstrumentedSequencePoint[] SequencePoints { get; }
 
+        private readonly SequencePoint[] _sequencePoints;
         private readonly List<Branch> _generatedFinallyHandlers;
 
-        private MethodGraph(MethodDefinition method)
+        private InstrumentedMethodBuilder(MethodDefinition method)
         {
             Instructions = method.Body.Instructions.OrderBy(i => i.Offset).ToArray();
             var nodeCache = new NodeCache();
             nodeCache.Create(Instructions[0], out var startingNode);
             startingNode.ParseChild(nodeCache);
 
-            SequencePoints = GetSequencePoints(method);
+            _sequencePoints = method.DebugInformation.SequencePoints.OrderBy(sp => sp.Offset).ToArray();
             _generatedFinallyHandlers = GetGeneratedFinallyHandlers(method);
 
             Conditions = GetConditions(nodeCache);
             Branches = GetBranches();
+            SequencePoints = GetSequencePoints();
         }
 
-        private SequencePoint[] GetSequencePoints(MethodDefinition method)
+        private InstrumentedSequencePoint[] GetSequencePoints()
         {
-            return method.DebugInformation.SequencePoints.ToArray();
+            List<InstrumentedSequencePoint> instrumentedSequencePoints = new List<InstrumentedSequencePoint>();
+            for (int i = 0; i < _sequencePoints.Length; i++)
+            {
+                int startOffset = _sequencePoints[i].Offset;
+                int nextStartOffset = i + 1 < _sequencePoints.Length ? _sequencePoints[i + 1].Offset : int.MaxValue;
+                int endOffset = Instructions.Select(instruction => instruction.Offset).SkipWhile(offset => offset < startOffset)
+                    .TakeWhile(offset => offset < nextStartOffset)
+                    .Last();
+
+                instrumentedSequencePoints.Add(
+                    new InstrumentedSequencePoint(
+                        i,
+                        _sequencePoints[i].Document.Url,
+                        startOffset,
+                        endOffset,
+                        _sequencePoints[i].StartLine,
+                        _sequencePoints[i].EndLine,
+                        _sequencePoints[i].StartColumn,
+                        _sequencePoints[i].EndColumn
+                        ));
+            }
+
+            return instrumentedSequencePoints.ToArray();
         }
 
 
@@ -42,7 +66,7 @@ namespace UCoverme.ModelBuilder
             int generatedBranchId = 0; // this is whatever, the offsets are the key
             var generatedFinallyHandlers = method.Body.ExceptionHandlers
                 .Where(handler => handler.HandlerType == ExceptionHandlerType.Finally &&
-                                  !SequencePoints.Any(sp =>
+                                  !_sequencePoints.Any(sp =>
                                       sp.Offset >= handler.HandlerStart.Offset &&
                                       sp.Offset < handler.HandlerEnd.Offset &&
                                       !sp.IsHidden))
@@ -68,9 +92,9 @@ namespace UCoverme.ModelBuilder
             return endFinally.Offset;
         }
 
-        public static MethodGraph Build(MethodDefinition method)
+        public static InstrumentedMethodBuilder Build(MethodDefinition method)
         {
-            return new MethodGraph(method);
+            return new InstrumentedMethodBuilder(method);
         }
 
         private Branch[] GetBranches()

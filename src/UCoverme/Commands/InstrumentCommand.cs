@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using McMaster.Extensions.CommandLineUtils;
-using UCoverme.Instrumentation;
 using UCoverme.Model;
 using UCoverme.ModelBuilder;
+using UCoverme.ModelBuilder.Filters;
 using UCoverme.Options;
 using UCoverme.Utils;
 
@@ -15,6 +14,7 @@ namespace UCoverme.Commands
     {
         private readonly PathOption _targetOption;
         private readonly CommandOption _disableDefaultFilters;
+        private readonly FilterOption _filterOption;
         public override string Name => "instrument";
         public override string Description => "Sets up instrumentation on a target assembly.";
 
@@ -31,8 +31,17 @@ namespace UCoverme.Commands
                 Description = "Disables the default filters",
                 ShowInHelpText = true
             };
+
+            _filterOption = new FilterOption("--filter")
+            {
+                Description =
+                    "A list of filters to apply to selectively include or exclude assemblies or the contained classes from the coverage results.",
+                ShowInHelpText = true
+            };
+
             Options.Add(_targetOption);
             Options.Add(_disableDefaultFilters);
+            Options.Add(_filterOption);
         }
 
         public override void Execute()
@@ -44,39 +53,26 @@ namespace UCoverme.Commands
                 throw new ArgumentException("No target assembly matched the specified pattern.");
             }
 
-            List<AssemblyModel> assemblyModels = new List<AssemblyModel>();
+            List<IFilter> filters = new List<IFilter>();
+            if (_filterOption.HasValue())
+            {
+                filters.AddRange(_filterOption.ParsedValue);
+            }
+
+            if (!_disableDefaultFilters.HasValue())
+            {
+                filters.AddRange(AssemblyFilter.GetDefaultFilters());
+            }
+
+            UCovermeProject uCovermeProject = new UCovermeProject();
+
             foreach (var path in targetPaths)
             {
-                var model = AssemblyModelBuilder.Build(path, _disableDefaultFilters.HasValue());
-                assemblyModels.Add(model);
+                var model = InstrumentedAssemblyBuilder.Build(path, filters);
+                uCovermeProject.AddAssembly(model);
             }
 
-            Console.WriteLine("Parsed assemblies:");
-            foreach (var model in assemblyModels)
-            {
-                var logFile = $"{model.AssemblyName.Split(',').First()}-{model.AssemblyPaths.OriginalAssemblyPath.GetHashCode()}.methods.log";
-                using (var writer = new StreamWriter(File.Open(logFile, FileMode.Create)))
-                {
-                    foreach (var method in model.Classes.SelectMany(c => c.Methods))
-                    {
-                        writer.WriteLine(method.Debug());
-                    }
-                }
-
-                if (model.IsSkipped)
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.Write($"[DISABLED - {model.SkipReason.ToString()}] ");
-                    Console.ResetColor();
-                }
-                else
-                {
-                    var instrumenter = new Instrumenter(model);
-                    instrumenter.Instrument(new Progress<string>(Console.WriteLine));
-                }
-
-                Console.WriteLine($"{model.AssemblyName} - {model.AssemblyPaths.OriginalAssemblyPath}");
-            }
+            uCovermeProject.Instrument();
         }
     }
 }

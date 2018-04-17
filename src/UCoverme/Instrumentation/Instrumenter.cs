@@ -14,48 +14,72 @@ namespace UCoverme.Instrumentation
 {
     public class Instrumenter
     {
-        private readonly AssemblyModel _assemblyModel;
-        private readonly Type _dataCollectorType = typeof(UCovermeDataCollector);
+        private enum InstrumentationType
+        {
+            BranchEnter,
+            SequencePointHit,
+            BranchExit
+        }
 
-        // these are the references to the data collector assembly, be careful!
-        // if the method signatures are changing, we have change these too!
+        private readonly InstrumentedAssembly _instrumentedAssembly;
+
+        // WARNING: these are the references to the data collector assembly
+        // if the method signatures are changing in the data collector, we have change these too!
+        private readonly Type _dataCollectorType = typeof(UCovermeDataCollector);
         private TypeReference _testExecutionDataTypeReference;
         private MethodReference _getDataCollectorMethodReference;
         private MethodReference _branchEnteredMethodReference;
         private MethodReference _branchExitedMethodReference;
         private MethodReference _sequencePointHitMethodReference;
 
-        public Instrumenter(AssemblyModel assemblyModel)
+        private readonly Dictionary<int, Dictionary<InstrumentationType, Instruction[]>> _beforeInstructions = new Dictionary<int, Dictionary<InstrumentationType, Instruction[]>>();
+        private readonly Dictionary<int, Dictionary<InstrumentationType, Instruction[]>> _afterInstructions = new Dictionary<int, Dictionary<InstrumentationType, Instruction[]>>();
+
+        public Instrumenter(InstrumentedAssembly instrumentedAssembly)
         {
-            _assemblyModel = assemblyModel;
-            CreateTempCopies(_assemblyModel.AssemblyPaths);
-            CopyDataCollectorAssembly(_assemblyModel.AssemblyPaths);
+            _instrumentedAssembly = instrumentedAssembly;
+            CreateTempCopies(_instrumentedAssembly.AssemblyPaths);
         }
 
-        public void Instrument(IProgress<string> progress)
+        public void Instrument()
         {
-            using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(_assemblyModel.AssemblyPaths.TempAssemblyPath,
+            using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(
+                _instrumentedAssembly.AssemblyPaths.TempAssemblyPath,
                 new ReaderParameters
                 {
                     ReadSymbols = true
                 }))
             {
-                progress.Report($"Instrumenting assembly {_assemblyModel.AssemblyName}...");
+                Console.WriteLine($"Instrumenting assembly {_instrumentedAssembly.FullyQualifiedAssemblyName}...");
 
                 ImportAndSetInstrumentationMethodReferences(assemblyDefinition);
 
-                foreach (var method in _assemblyModel.Classes.SelectMany(c => c.Methods))
+                foreach (var instrumentedClass in _instrumentedAssembly.Classes)
                 {
-                    progress.Report($"\t{method.Name}");
-                    InstrumentMethod(assemblyDefinition, method);
+                    if (instrumentedClass.IsSkipped)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.Write($"[DISABLED - {instrumentedClass.SkipReason.ToString()}] ");
+                        Console.ResetColor();
+                        Console.WriteLine($"{instrumentedClass.Name}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"{instrumentedClass.Name}");
+                        foreach (var method in instrumentedClass.Methods)
+                        {
+                            Console.WriteLine($"\t{method.Name}");
+                            InstrumentMethod(assemblyDefinition, method);
+                        }
+                    }
                 }
 
-                assemblyDefinition.Write(_assemblyModel.AssemblyPaths.OriginalAssemblyPath, new WriterParameters
-                 {
-                     WriteSymbols = true
-                 });
+                assemblyDefinition.Write(_instrumentedAssembly.AssemblyPaths.OriginalAssemblyPath, new WriterParameters
+                {
+                    WriteSymbols = true
+                });
 
-                progress.Report($"Done, assembly written to {_assemblyModel.AssemblyPaths.OriginalAssemblyPath}.");
+                Console.WriteLine($"Done, assembly written to {_instrumentedAssembly.AssemblyPaths.OriginalAssemblyPath}.");
             }
         }
 
@@ -87,16 +111,6 @@ namespace UCoverme.Instrumentation
                 assemblyDefinition.MainModule.ImportReference(sequencePointHitMethodInfo);
         }
 
-        private void CopyDataCollectorAssembly(AssemblyPaths assemblyPaths)
-        {
-            var dataCollectorAssemblyPath = _dataCollectorType.Assembly.Location;
-            var outputDirectory = Path.GetDirectoryName(assemblyPaths.OriginalAssemblyPath);
-            File.Copy(dataCollectorAssemblyPath,
-                Path.Combine(outputDirectory,
-                    Path.GetFileName(dataCollectorAssemblyPath)),
-                true);
-        }
-
         private void CreateTempCopies(AssemblyPaths assemblyPaths)
         {
             if (!File.Exists(assemblyPaths.OriginalAssemblyPath))
@@ -115,22 +129,41 @@ namespace UCoverme.Instrumentation
 
         private void InstrumentMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method)
         {
-            var ilProcessor = GetILProcessorForMethod(assemblyDefinition, method);
+            var ilProcessor = GetILProcessorForMethod(assemblyDefinition, method.MethodId);
             ilProcessor.Body.InitLocals = true;
             ilProcessor.Body.SimplifyMacros();
 
-            var testExecutionDataVariable = new VariableDefinition(_testExecutionDataTypeReference);
-            ilProcessor.Body.Variables.Add(testExecutionDataVariable);
-
             ChangeTailCallsToNops(ilProcessor);
-            
+
             var originalInstructions = ilProcessor.Body.Instructions.ToArray();
-            List<ArraySegment<Instruction>> branchInstructions = GetBranchInstructions(originalInstructions, method);
-            InsertDataCollector(ilProcessor, testExecutionDataVariable, originalInstructions);
-            InsertBranchStartInstrumentation(ilProcessor, testExecutionDataVariable, branchInstructions, method);
-            InsertBranchEndInstrumentation(ilProcessor, testExecutionDataVariable, branchInstructions, method);
-            
+            var branchSegments = GetInstructionSegments(originalInstructions, method.Branches);
+            var sequencePointSegments = GetInstructionSegments(originalInstructions, method.SequencePoints);
+
+            var testExecutionDataVariable = InsertDataCollector(ilProcessor, originalInstructions);
+            CreateBranchEnters(ilProcessor, method.MethodId, testExecutionDataVariable, branchSegments);
+            CreateBranchExits(ilProcessor, method.MethodId, testExecutionDataVariable, branchSegments);
+            CreateSequencePointHits(ilProcessor, method.MethodId, testExecutionDataVariable, sequencePointSegments);
+
+            InsertInstrumentationInstructions(ilProcessor, originalInstructions);
+            ClearBeforeAndAfterInstructions();
+
             ilProcessor.Body.OptimizeMacros();
+        }
+
+        private ILProcessor GetILProcessorForMethod(AssemblyDefinition assemblyDefinition, int methodId)
+        {
+            var methodDefinition = assemblyDefinition.MainModule
+                .GetTypes()
+                .SelectMany(t => t.GetInstrumentableMethods())
+                .FirstOrDefault(m =>
+                    m.MetadataToken.ToInt32() == methodId);
+
+            if (methodDefinition == null)
+            {
+                throw new ArgumentException($"Could not find the method with id {methodId}");
+            }
+
+            return methodDefinition.Body.GetILProcessor();
         }
 
         private void ChangeTailCallsToNops(ILProcessor ilProcessor)
@@ -141,147 +174,238 @@ namespace UCoverme.Instrumentation
             }
         }
 
-        private void InsertDataCollector(ILProcessor ilProcessor, VariableDefinition testExecutionDataVariable,
+        private List<ArraySegment<Instruction>> GetInstructionSegments(Instruction[] instructions, IReadOnlyList<ICodeSegment> segments)
+        {
+            var segmentedInstructions = new List<ArraySegment<Instruction>>(segments.Count);
+
+            if (segments.Count == 0)
+            {
+                return segmentedInstructions;
+            }
+
+            int currentSegment = 0;
+            int currentStartOffset = 0;
+            int idx = 0;
+            int currentInstructionCount = 1;
+            while (idx < instructions.Length)
+            {
+                if (instructions[idx].Offset == segments[currentSegment].EndOffset)
+                {
+                    segmentedInstructions.Add(new ArraySegment<Instruction>(instructions, currentStartOffset,
+                        currentInstructionCount));
+                    currentSegment++;
+                    currentInstructionCount = 1;
+                    idx++;
+                    currentStartOffset = idx;
+                    continue;
+                }
+
+                currentInstructionCount++;
+                idx++;
+            }
+            return segmentedInstructions;
+        }
+
+        private VariableReference InsertDataCollector(ILProcessor ilProcessor,
             Instruction[] originalInstructions)
         {
+            var testExecutionDataVariable = new VariableDefinition(_testExecutionDataTypeReference);
+            ilProcessor.Body.Variables.Add(testExecutionDataVariable);
+
             var getDataCollectorInstruction = ilProcessor.Create(OpCodes.Call, _getDataCollectorMethodReference);
             var storeDataCollectorInstruction = ilProcessor.Create(OpCodes.Stloc, testExecutionDataVariable);
 
             var originalInstruction = originalInstructions[0];
             ilProcessor.InsertAllBefore(originalInstruction,
-                getDataCollectorInstruction, 
+                getDataCollectorInstruction,
                 storeDataCollectorInstruction);
 
             UpdateInstructionReference(ilProcessor.Body, originalInstruction, getDataCollectorInstruction);
+
+            return testExecutionDataVariable;
         }
 
-        private void InsertBranchEndInstrumentation(ILProcessor ilProcessor, 
-            VariableDefinition testExecutionDataVariable, 
-            List<ArraySegment<Instruction>> branches, 
-            InstrumentedMethod method)
+        private void CreateBranchEnters(ILProcessor ilProcessor,
+            int methodId,
+            VariableReference testExecutionDataVariable,
+            IReadOnlyList<ArraySegment<Instruction>> branches)
         {
             for (int i = 0; i < branches.Count; i++)
             {
-                // We have to find the last instruction but be aware! 
-                // When the previous instruction is a prefix, we cannot insert the instrumentation code inbetween the two.
-                var startInstructionOffset = branches[i].Offset;
-                var endInstructionOffset = branches[i].Offset + branches[i].Count - 1;
-                Instruction endInstruction = branches[i].Array[endInstructionOffset];
-                Instruction previousInstruction = endInstructionOffset > startInstructionOffset ? 
-                    branches[i].Array[endInstructionOffset - 1] : 
-                    null;
-                while (previousInstruction != null && previousInstruction.OpCode.OpCodeType == OpCodeType.Prefix)
-                {
-                    endInstructionOffset--;
-                    endInstruction = previousInstruction;
-                    previousInstruction = endInstructionOffset > startInstructionOffset ?
-                    branches[i].Array[endInstructionOffset - 1] :
-                    null;
-                }
-
                 var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
-                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, method.MethodId);
-                var branchIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
-                var exitBranchInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchExitedMethodReference);
-
-                // todo: if the last instruction is a prefix, where should we place the instrumentation code? - for now just place it before
-                if (endInstruction.OpCode.FlowControl == FlowControl.Branch ||
-                    endInstruction.OpCode.FlowControl == FlowControl.Cond_Branch ||
-                    endInstruction.OpCode.FlowControl == FlowControl.Return ||
-                    endInstruction.OpCode.FlowControl == FlowControl.Throw ||
-                    endInstruction.OpCode.OpCodeType == OpCodeType.Prefix)
-                {
-                    ilProcessor.InsertAllBefore(endInstruction,
-                    loadCollectorInstruction,
-                    methodIdParameterInstruction,
-                    branchIdParameterInstruction,
-                    exitBranchInstruction);
-                }
-                else
-                {
-                    ilProcessor.InsertAllAfter(endInstruction,
-                    loadCollectorInstruction,
-                    methodIdParameterInstruction,
-                    branchIdParameterInstruction,
-                    exitBranchInstruction);
-                }
-
-                UpdateInstructionReference(ilProcessor.Body, endInstruction, loadCollectorInstruction);
-            }
-        }
-
-        private void InsertBranchStartInstrumentation(ILProcessor ilProcessor,
-            VariableDefinition testExecutionDataVariable,
-            List<ArraySegment<Instruction>> branches, 
-            InstrumentedMethod method)
-        {
-            for (int i = 0; i < branches.Count; i++)
-            {
-                var originalInstruction = branches[i].Array[branches[i].Offset];
-
-                var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
-                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, method.MethodId);
+                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
                 var branchIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
                 var enterBranchInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchEnteredMethodReference);
 
-                ilProcessor.InsertAllBefore(originalInstruction,
+                CreateEnterInstruction(branches[i], 
+                    InstrumentationType.BranchEnter,
                     loadCollectorInstruction,
                     methodIdParameterInstruction,
                     branchIdParameterInstruction,
                     enterBranchInstruction);
-
-                UpdateInstructionReference(ilProcessor.Body, originalInstruction, loadCollectorInstruction);
             }
         }
 
-        private List<ArraySegment<Instruction>> GetBranchInstructions(Instruction[] instructions,
-            InstrumentedMethod method)
+        private void CreateBranchExits(ILProcessor ilProcessor,
+            int methodId,
+            VariableReference testExecutionDataVariable,
+            IReadOnlyList<ArraySegment<Instruction>> branches)
         {
-            var branchInstructions = new List<ArraySegment<Instruction>>(method.Branches.Length);
-            int currentBranch = 0;
-            int currentStartOffset = 0;
-            int currentIdx = 0;
-            int currentInstructionCount = 1;
-            while (currentIdx < instructions.Length)
+            for (int i = 0; i < branches.Count; i++)
             {
-                if (instructions[currentIdx].Offset == method.Branches[currentBranch].EndOffset)
+                var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
+                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
+                var branchIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
+                var exitBranchInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchExitedMethodReference);
+
+                CreateExitInstruction(branches[i],
+                    InstrumentationType.BranchExit,
+                    loadCollectorInstruction,
+                    methodIdParameterInstruction,
+                    branchIdParameterInstruction,
+                    exitBranchInstruction);
+            }
+        }
+
+        private void CreateSequencePointHits(ILProcessor ilProcessor,
+            int methodId,
+            VariableReference testExecutionDataVariable,
+            IReadOnlyList<ArraySegment<Instruction>> sequencePoints)
+        {
+            for (int i = 0; i < sequencePoints.Count; i++)
+            {
+                var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
+                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
+                var sequencePointIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
+                var sequencePointHidInstruction = ilProcessor.Create(OpCodes.Callvirt, _sequencePointHitMethodReference);
+
+                CreateExitInstruction(sequencePoints[i],
+                    InstrumentationType.SequencePointHit,
+                    loadCollectorInstruction,
+                    methodIdParameterInstruction,
+                    sequencePointIdParameterInstruction,
+                    sequencePointHidInstruction);
+            }
+        }
+
+        private void CreateEnterInstruction(ArraySegment<Instruction> segment, InstrumentationType type, params Instruction[] instrumentationInstructions)
+        {
+            var beginningInstruction = segment.Array[segment.Offset];
+            PlaceInstrumentationBefore(beginningInstruction, type, instrumentationInstructions);
+        }
+
+        private void CreateExitInstruction(ArraySegment<Instruction> segment, InstrumentationType type, params Instruction[] instrumentationInstructions)
+        {
+            // if the last instruction is not branching or throwing, the instrumentation code can come after
+            var lastInstruction = segment.Array[segment.Offset + segment.Count - 1];
+            if ((lastInstruction.OpCode.FlowControl == FlowControl.Next && lastInstruction.OpCode.OpCodeType != OpCodeType.Prefix) ||
+                lastInstruction.OpCode.FlowControl == FlowControl.Break ||
+                lastInstruction.OpCode.FlowControl == FlowControl.Call)
+            {
+                PlaceInstrumentationAfter(lastInstruction, type, instrumentationInstructions);
+            }
+            else
+            {
+                // we have to find the last instruction that doesn't have a prefix intruction to place the instrumentation code before it
+                lastInstruction = GetLastInstrumentableInstructionFromSegment(segment);
+                PlaceInstrumentationBefore(lastInstruction, type, instrumentationInstructions);
+            }
+        }
+
+        private Instruction GetLastInstrumentableInstructionFromSegment(ArraySegment<Instruction> segment)
+        {
+            // We have to find the last instruction but be aware! 
+            // When the previous instruction is a prefix, we cannot insert the instrumentation code inbetween the two.
+            var startInstructionOffset = segment.Offset;
+            var endInstructionOffset = segment.Offset + segment.Count - 1;
+            Instruction endInstruction = segment.Array[endInstructionOffset];
+            Instruction previousInstruction = endInstructionOffset > startInstructionOffset
+                ? segment.Array[endInstructionOffset - 1]
+                : null;
+            while (previousInstruction != null && previousInstruction.OpCode.OpCodeType == OpCodeType.Prefix)
+            {
+                endInstructionOffset--;
+                endInstruction = previousInstruction;
+                previousInstruction = endInstructionOffset > startInstructionOffset
+                    ? segment.Array[endInstructionOffset - 1]
+                    : null;
+            }
+
+            return endInstruction;
+        }
+
+        private void InsertInstrumentationInstructions(ILProcessor ilProcessor, Instruction[] originalInstructions)
+        {
+            foreach (var instrumentationInstructions in _afterInstructions)
+            {
+                // after instructions should be in the format of
+                // 1. instruction
+                // 2. sequencepointhit
+                // 3. branchexit
+                var originalInstruction = originalInstructions.First(i => i.Offset == instrumentationInstructions.Key);
+                var mergedInstructions = new List<Instruction>();
+                if (instrumentationInstructions.Value.ContainsKey(InstrumentationType.SequencePointHit))
                 {
-                    branchInstructions.Add(new ArraySegment<Instruction>(instructions, currentStartOffset,
-                        currentInstructionCount));
-                    currentBranch++;
-                    currentInstructionCount = 1;
-                    currentIdx++;
-                    currentStartOffset = currentIdx;
-                    continue;
+                    mergedInstructions.AddRange(instrumentationInstructions.Value[InstrumentationType.SequencePointHit]);
                 }
 
-                currentInstructionCount++;
-                currentIdx++;
+                if (instrumentationInstructions.Value.ContainsKey(InstrumentationType.BranchExit))
+                {
+                    mergedInstructions.AddRange(instrumentationInstructions.Value[InstrumentationType.BranchExit]);
+                }
+                ilProcessor.InsertAllAfter(originalInstruction, mergedInstructions.ToArray());
             }
 
-            return branchInstructions;
-        }
-
-        private List<Instruction> GetBranchStartInstructions(InstrumentedMethod method, ILProcessor ilProcessor)
-        {
-            return ilProcessor.Body.Instructions.Where(i => method.Branches.Any(m => m.StartOffset == i.Offset))
-                .ToList();
-        }
-
-        private ILProcessor GetILProcessorForMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method)
-        {
-            var methodDefinition = assemblyDefinition.MainModule
-                .GetTypes()
-                .SelectMany(t => t.GetInstrumentableMethods())
-                .FirstOrDefault(m =>
-                    m.MetadataToken.ToInt32() == method.MethodId);
-
-            if (methodDefinition == null)
+            foreach (var instrumentationInstructions in _beforeInstructions)
             {
-                throw new ArgumentException($"Could not find the method with id {method.MethodId}");
-            }
+                // before instructions should be in the format of
+                // 1. branchenter
+                // 2. sequencepointhit
+                // 3. branchexit
+                // 4. instruction
 
-            return methodDefinition.Body.GetILProcessor();
+                var originalInstruction = originalInstructions.First(i => i.Offset == instrumentationInstructions.Key);
+                var mergedInstructions = new List<Instruction>();
+                if (instrumentationInstructions.Value.ContainsKey(InstrumentationType.BranchEnter))
+                {
+                    mergedInstructions.AddRange(instrumentationInstructions.Value[InstrumentationType.BranchEnter]);
+                }
+                if (instrumentationInstructions.Value.ContainsKey(InstrumentationType.SequencePointHit))
+                {
+                    mergedInstructions.AddRange(instrumentationInstructions.Value[InstrumentationType.SequencePointHit]);
+                }
+                if (instrumentationInstructions.Value.ContainsKey(InstrumentationType.BranchExit))
+                {
+                    mergedInstructions.AddRange(instrumentationInstructions.Value[InstrumentationType.BranchExit]);
+                }
+                ilProcessor.InsertAllBefore(originalInstruction, mergedInstructions.ToArray());
+                // and we have to update the operand references to the first instruction inserted
+                UpdateInstructionReference(ilProcessor.Body, originalInstruction, mergedInstructions[0]);
+            }
+        }
+
+        private void ClearBeforeAndAfterInstructions()
+        {
+            _beforeInstructions.Clear();
+            _afterInstructions.Clear();
+        }
+
+        private void PlaceInstrumentationBefore(Instruction target, InstrumentationType type, params Instruction[] instructions)
+        {
+            if (!_beforeInstructions.ContainsKey(target.Offset))
+            {
+                _beforeInstructions[target.Offset] = new Dictionary<InstrumentationType, Instruction[]>();
+            }
+            _beforeInstructions[target.Offset].Add(type, instructions);
+        }
+
+        private void PlaceInstrumentationAfter(Instruction target, InstrumentationType type, params Instruction[] instructions)
+        {
+            if (!_afterInstructions.ContainsKey(target.Offset))
+            {
+                _afterInstructions[target.Offset] = new Dictionary<InstrumentationType, Instruction[]>();
+            }
+            _afterInstructions[target.Offset].Add(type, instructions);
         }
 
         private void UpdateInstructionReference(MethodBody methodBody, Instruction originalInstruction,

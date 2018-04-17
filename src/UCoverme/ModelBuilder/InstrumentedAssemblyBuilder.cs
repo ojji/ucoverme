@@ -4,18 +4,19 @@ using System.IO;
 using System.Linq;
 using Mono.Cecil;
 using UCoverme.Model;
+using UCoverme.ModelBuilder.Filters;
 using UCoverme.Utils;
 
 namespace UCoverme.ModelBuilder
 {
-    public class AssemblyModelBuilder
+    public class InstrumentedAssemblyBuilder
     {
-        public string AssemblyName { get; }
+        public string FullyQualifiedAssemblyName { get; }
         public AssemblyPaths AssemblyPaths { get; }
 
         private readonly Dictionary<int, MethodDefinition> _methodMapping;
 
-        private AssemblyModelBuilder(AssemblyPaths assemblyPaths, bool shouldReadSymbols)
+        private InstrumentedAssemblyBuilder(AssemblyPaths assemblyPaths, bool shouldReadSymbols)
         {
             AssemblyPaths = assemblyPaths;
 
@@ -25,7 +26,7 @@ namespace UCoverme.ModelBuilder
                     ReadSymbols = shouldReadSymbols
                 }))
             {
-                AssemblyName = assemblyDefinition.FullName;
+                FullyQualifiedAssemblyName = assemblyDefinition.FullName;
                 _methodMapping = new Dictionary<int, MethodDefinition>();
                 BuildMethodMappings(assemblyDefinition);
             }
@@ -79,82 +80,69 @@ namespace UCoverme.ModelBuilder
             var methodName = methodDefinition.FullName;
             var methodId = methodDefinition.MetadataToken.ToInt32();
 
-            var methodGraph = MethodGraph.Build(methodDefinition);
-            var sequencePoints = GetSequencePointsForMethod(methodId);
+            var methodBuilder = InstrumentedMethodBuilder.Build(methodDefinition);
             return new InstrumentedMethod(
                 methodName,
                 methodId,
-                methodGraph.Branches,
-                methodGraph.Conditions,
-                sequencePoints,
-                methodGraph.Instructions);
+                methodBuilder.Branches,
+                methodBuilder.Conditions,
+                methodBuilder.SequencePoints,
+                methodBuilder.Instructions);
         }
-
-        private InstrumentedSequencePoint[] GetSequencePointsForMethod(int methodId)
+        
+        public static InstrumentedAssembly Build(string assemblyPath, List<IFilter> filters)
         {
-            var sequencePoints = new InstrumentedSequencePoint[0];
-            if (_methodMapping.ContainsKey(methodId) && _methodMapping[methodId].DebugInformation.HasSequencePoints)
-            {
-                sequencePoints = _methodMapping[methodId]
-                    .DebugInformation
-                    .SequencePoints
-                    .Select(sp =>
-                        new InstrumentedSequencePoint(
-                            sp.Document.Url,
-                            sp.Offset,
-                            sp.StartLine,
-                            sp.EndLine,
-                            sp.StartColumn,
-                            sp.EndColumn))
-                    .OrderBy(sp => sp.Offset)
-                    .ToArray();
-            }
-
-            return sequencePoints;
-        }
-
-        public static AssemblyModel Build(string assemblyPath, bool disableDefaultFilters)
-        {
-            var shouldReadSymbols = IsInstrumentable(assemblyPath, disableDefaultFilters, out var skipReason);
+            var shouldReadSymbols = IsInstrumentable(assemblyPath, out var skipReason);
             var assemblyBuilder =
-                new AssemblyModelBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), shouldReadSymbols);
+                new InstrumentedAssemblyBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), shouldReadSymbols);
 
-            var assemblyModel = new AssemblyModel(
-                assemblyBuilder.AssemblyName,
+            var instrumentedAssembly = new InstrumentedAssembly(
+                assemblyBuilder.FullyQualifiedAssemblyName,
                 assemblyBuilder.AssemblyPaths,
                 assemblyBuilder.GetFiles(),
                 assemblyBuilder.GetClasses());
 
             if (skipReason != SkipReason.NoSkip)
             {
-                assemblyModel.SkipFromInstrumentation(skipReason);
+                instrumentedAssembly.SkipFromInstrumentation(skipReason);
+                return instrumentedAssembly;
             }
 
-            return assemblyModel;
+            var exclusionFilters = filters.Where(f => f.FilterType == FilterType.Exclusive);
+            foreach (var exclusionFilter in exclusionFilters)
+            {
+                exclusionFilter.ApplyTo(instrumentedAssembly);
+            }
+
+            var inclusionFilters = filters.Where(f => f.FilterType == FilterType.Inclusive);
+            foreach (var inclusionFilter in inclusionFilters)
+            {
+                inclusionFilter.ApplyTo(instrumentedAssembly);
+            }
+
+            return instrumentedAssembly;
         }
 
-        private static bool IsInstrumentable(string assemblyPath, bool disableDefaultFilters, out SkipReason skipReason)
+        private static bool IsInstrumentable(string assemblyPath, out SkipReason skipReason)
         {
-            
             using (var assembly = AssemblyDefinition.ReadAssembly(assemblyPath))
             {
                 // its a test framework assembly
-                if (TestFrameworkAssemblies.Any(testFrameworkAssemblyName => assembly.FullName.StartsWith(testFrameworkAssemblyName)))
+                if (TestFrameworkAssemblies.Any(testFrameworkAssemblyName =>
+                    assembly.FullName.StartsWith(testFrameworkAssemblyName)))
                 {
                     skipReason = SkipReason.TestAssembly;
                     return false;
                 }
 
-                // its one of the default disabled assemblies
-                if (!disableDefaultFilters && MatchesDisabledAssemblies(assembly.FullName))
+                // its a temp file, or a file with no symbol files
+                if (Path.GetFileNameWithoutExtension(assemblyPath).EndsWith($"{AssemblyPaths.TempFilenameString}"))
                 {
-                    skipReason = SkipReason.Filter;
+                    skipReason = SkipReason.BackupFile;
                     return false;
                 }
 
-                // its a temp file, or a file with no symbol files
-                if (Path.GetFileNameWithoutExtension(assemblyPath).EndsWith($"{AssemblyPaths.TempFilenameString}") ||
-                    !File.Exists(Path.ChangeExtension(assemblyPath, "pdb")))
+                if (!File.Exists(Path.ChangeExtension(assemblyPath, "pdb")))
                 {
                     skipReason = SkipReason.NoPdb;
                     return false;
@@ -165,30 +153,10 @@ namespace UCoverme.ModelBuilder
             }
         }
 
-        private static bool MatchesDisabledAssemblies(string fullName)
-        {
-            var shortAssemblyName = fullName.Split(',').First();
-            return DefaultDisabledAssemblies
-                .Any(pattern =>
-                    pattern.EndsWith(".*")
-                        ? shortAssemblyName.StartsWith(pattern.Substring(0, pattern.Length - 1),
-                            StringComparison.InvariantCultureIgnoreCase)
-                        : shortAssemblyName.Equals(pattern, StringComparison.InvariantCultureIgnoreCase));
-        }
-
         private static HashSet<string> TestFrameworkAssemblies =>
             new HashSet<string>(StringComparer.InvariantCultureIgnoreCase)
             {
                 "NUnit3.TestAdapter"
-            };
-
-        private static HashSet<string> DefaultDisabledAssemblies =>
-            new HashSet<string>(StringComparer.InvariantCultureIgnoreCase)
-            {
-                "mscorlib",
-                "System",
-                "System.*",
-                "Microsoft.*"
             };
     }
 }

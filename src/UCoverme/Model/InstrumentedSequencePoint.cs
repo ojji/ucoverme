@@ -3,23 +3,27 @@ using System.Text;
 
 namespace UCoverme.Model
 {
-    public class InstrumentedSequencePoint
+    public class InstrumentedSequencePoint : ICodeSegment
     {
+        public int Id { get; }
         public string FilePath { get; }
-        public int Offset { get; }
+        public int StartOffset { get; }
+        public int EndOffset { get; }
         public int StartLine { get; }
         public int EndLine { get; }
         public int StartColumn { get; }
         public int EndColumn { get; }
         public bool IsHidden => StartLine == HiddenLine && EndLine == HiddenLine;
-        
+
         private const int HiddenLine = 0xFEEFEE;
 
-        public InstrumentedSequencePoint(string filePath, int offset, int startLine, int endLine, int startColumn,
+        public InstrumentedSequencePoint(int id, string filePath, int startOffset, int endOffset, int startLine, int endLine, int startColumn,
             int endColumn)
         {
+            Id = id;
             FilePath = filePath;
-            Offset = offset;
+            StartOffset = startOffset;
+            EndOffset = endOffset;
             StartLine = startLine;
             EndLine = endLine;
             StartColumn = startColumn;
@@ -62,7 +66,7 @@ namespace UCoverme.Model
 
         public override string ToString()
         {
-            return IsHidden ? "// [hidden]" : $"// [{StartLine} {StartColumn} - {EndLine} {EndColumn}]";
+            return IsHidden ? $"// [{Id}] [{StartOffset}-{EndOffset}] [hidden]" : $"// [{Id}] [{StartOffset}-{EndOffset}] [{StartLine} {StartColumn} - {EndLine} {EndColumn}]";
         }
     }
 }
