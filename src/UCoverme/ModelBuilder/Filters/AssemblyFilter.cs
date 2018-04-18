@@ -103,7 +103,9 @@ namespace UCoverme.ModelBuilder.Filters
 
         public override string ToString()
         {
-            return $"[{AssemblyFilterText}]{TypenameFilterText}";
+            return FilterType == FilterType.Inclusive
+                ? $"+[{AssemblyFilterText}]{TypenameFilterText}"
+                : $"-[{AssemblyFilterText}]{TypenameFilterText}";
         }
     }
 }

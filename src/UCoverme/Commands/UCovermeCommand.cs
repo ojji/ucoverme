@@ -22,6 +22,11 @@ namespace UCoverme.Commands
         {
             return new InstrumentCommand();
         }
+
+        public static UCovermeCommand UninstrumentCommand()
+        {
+            return new UninstrumentCommand();
+        }
     }
 
     

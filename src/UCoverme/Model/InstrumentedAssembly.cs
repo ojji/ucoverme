@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Linq;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using UCoverme.ModelBuilder.Filters;
 
 namespace UCoverme.Model
@@ -12,7 +14,22 @@ namespace UCoverme.Model
         public InstrumentedClass[] Classes { get; }
 
         public bool IsSkipped => SkipReason != SkipReason.NoSkip;
+
+        [JsonConverter(typeof(StringEnumConverter))]
         public SkipReason SkipReason { get; private set; }
+
+        [JsonConstructor]
+        private InstrumentedAssembly(string fullyQualifiedAssemblyName, AssemblyPaths assemblyPaths,
+            InstrumentedFile[] files,
+            InstrumentedClass[] classes,
+            SkipReason skipReason)
+        {
+            FullyQualifiedAssemblyName = fullyQualifiedAssemblyName;
+            AssemblyPaths = assemblyPaths;
+            Files = files;
+            Classes = classes;
+            SkipReason = skipReason;
+        }
 
         public InstrumentedAssembly(string fullyQualifiedAssemblyName, AssemblyPaths assemblyPaths,
             InstrumentedFile[] files,
@@ -23,10 +40,6 @@ namespace UCoverme.Model
             Files = files;
             Classes = classes;
             SkipReason = SkipReason.NoSkip;
-            foreach (var instrumentedClass in classes)
-            {
-                instrumentedClass.SetContainingAssembly(this);
-            }
         }
 
         public override string ToString()

@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Text;
+using Newtonsoft.Json;
 
 namespace UCoverme.Model
 {
@@ -17,6 +18,7 @@ namespace UCoverme.Model
 
         private const int HiddenLine = 0xFEEFEE;
 
+        [JsonConstructor]
         public InstrumentedSequencePoint(int id, string filePath, int startOffset, int endOffset, int startLine, int endLine, int startColumn,
             int endColumn)
         {

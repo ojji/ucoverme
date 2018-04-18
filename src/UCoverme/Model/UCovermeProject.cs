@@ -48,6 +48,30 @@ namespace UCoverme.Model
             }
         }
 
+        public void Uninstrument()
+        {
+            foreach (var model in Assemblies)
+            {
+                if (!model.IsSkipped)
+                {
+                    Console.WriteLine($"Uninstrumenting assembly - {model.AssemblyPaths.OriginalAssemblyPath}");
+
+                    var uninstrumenter = new Uninstrumenter(model);
+                    uninstrumenter.Uninstrument();
+                }
+            }
+
+            DeleteDataCollectorAssemblies();
+        }
+
+        private void DeleteDataCollectorAssemblies()
+        {
+            foreach (var dataCollectorAssemblyPath in DataCollectorAssemblyPaths)
+            {
+                File.Delete(dataCollectorAssemblyPath);
+            }
+        }
+
         private void CopyDataCollectorAssembly(AssemblyPaths assemblyPaths)
         {
             var dataCollectorAssemblyPath = typeof(UCovermeDataCollector).Assembly.Location;

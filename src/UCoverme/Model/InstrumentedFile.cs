@@ -1,4 +1,5 @@
 ﻿using System.Threading;
+using Newtonsoft.Json;
 
 namespace UCoverme.Model
 {
@@ -6,6 +7,13 @@ namespace UCoverme.Model
     {
         public int Id { get; }
         public string Path { get; }
+
+        [JsonConstructor]
+        private InstrumentedFile(int id, string path)
+        {
+            Id = id;
+            Path = path;
+        }
 
         public InstrumentedFile(string path)
         {

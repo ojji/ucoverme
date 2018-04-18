@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Runtime;
+using Newtonsoft.Json;
 
 namespace UCoverme.Model
 {
@@ -12,6 +13,7 @@ namespace UCoverme.Model
 
         public const string TempFilenameString = ".ucovermebackup";
 
+        [JsonConstructor]
         private AssemblyPaths(string originalAssemblyPath, string originalPdbPath, string tempAssemblyPath, string tempPdbPath)
         {
             TempAssemblyPath = tempAssemblyPath;

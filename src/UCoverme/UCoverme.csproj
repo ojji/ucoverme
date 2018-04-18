@@ -9,10 +9,7 @@
     <PackageReference Include="Glob" Version="0.4.0" />
     <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="2.2.1" />
     <PackageReference Include="Mono.Cecil" Version="0.10.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Instrumentation\" />
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
   </ItemGroup>
 
   <ItemGroup>

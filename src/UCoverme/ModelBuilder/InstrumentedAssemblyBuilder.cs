@@ -89,18 +89,31 @@ namespace UCoverme.ModelBuilder
                 methodBuilder.SequencePoints,
                 methodBuilder.Instructions);
         }
-        
+
         public static InstrumentedAssembly Build(string assemblyPath, List<IFilter> filters)
         {
-            var shouldReadSymbols = IsInstrumentable(assemblyPath, out var skipReason);
+            var isInstrumentable = IsInstrumentable(assemblyPath, out var skipReason);
             var assemblyBuilder =
-                new InstrumentedAssemblyBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), shouldReadSymbols);
+                new InstrumentedAssemblyBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), isInstrumentable);
 
-            var instrumentedAssembly = new InstrumentedAssembly(
-                assemblyBuilder.FullyQualifiedAssemblyName,
-                assemblyBuilder.AssemblyPaths,
-                assemblyBuilder.GetFiles(),
-                assemblyBuilder.GetClasses());
+            InstrumentedAssembly instrumentedAssembly;
+
+            if (isInstrumentable)
+            {
+                instrumentedAssembly = new InstrumentedAssembly(
+                    assemblyBuilder.FullyQualifiedAssemblyName,
+                    assemblyBuilder.AssemblyPaths,
+                    assemblyBuilder.GetFiles(),
+                    assemblyBuilder.GetClasses());
+            }
+            else
+            {
+                instrumentedAssembly = new InstrumentedAssembly(
+                    assemblyBuilder.FullyQualifiedAssemblyName,
+                    assemblyBuilder.AssemblyPaths,
+                    new InstrumentedFile[0],
+                    new InstrumentedClass[0]);
+            }
 
             if (skipReason != SkipReason.NoSkip)
             {

@@ -15,6 +15,7 @@ namespace UCoverme
             app.HelpOption("-?|--help|-h");
 
             app.AddCommand(UCovermeCommand.InstrumentCommand());
+            app.AddCommand(UCovermeCommand.UninstrumentCommand());
 
             app.OnExecute(() =>
             {
