@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using System.Threading.Tasks;
+using NUnit.Framework;
 
 namespace TestLibrary.Tests.Nunit
 {
@@ -19,6 +20,14 @@ namespace TestLibrary.Tests.Nunit
         {
             var subject = new TestLibrary();
             Assert.That(subject.TernaryIfTest(2, 3), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task TaskTest()
+        {
+            var subject = new TaskTest();
+            var elapsedTime = await subject.Run();
+            Assert.That(elapsedTime, Is.LessThan(9000));
         }
     }
 }
