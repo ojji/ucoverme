@@ -13,7 +13,7 @@ namespace UCoverme.DataCollector
         private static readonly Lazy<IDataCollector> TestExecutionDataCollector = new Lazy<IDataCollector>(DataCollectors.DataCollectors.CreateDataCollector);
         private static readonly object LockObject = new object();
 
-        public static TestExecutionData GetDataCollector()
+        public static TestExecutionData GetDataCollector(string coverageProjectPath)
         {
             lock (LockObject)
             {
@@ -22,7 +22,7 @@ namespace UCoverme.DataCollector
                     throw new InvalidOperationException("Test execution datacollector is null.");
                 }
 
-                return TestExecutionDataCollector.Value.GetDataCollector();
+                return TestExecutionDataCollector.Value.GetDataCollector(coverageProjectPath);
             }
         }
 

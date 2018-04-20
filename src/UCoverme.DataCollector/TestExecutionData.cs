@@ -12,6 +12,7 @@ namespace UCoverme.DataCollector
         public Guid TestCaseId { get; }
         public string TestCaseName { get; }
         public TestOutcome TestResult { get; private set; }
+        public string ProjectPath { get; private set; }
 
         private readonly ConcurrentQueue<ExecutionEvent> _executionEvents;
 
@@ -63,7 +64,16 @@ namespace UCoverme.DataCollector
 
         private string GetTestCaseFilename()
         {
-            return Path.Combine(Directory.GetCurrentDirectory(), $"{DataCollectorName}-{TestCaseId.ToString()}.ucovermetest");
+            var coverageDirectory = Path.GetDirectoryName(ProjectPath);
+            return Path.Combine(coverageDirectory, $"{DataCollectorName}-{TestCaseId.ToString()}.ucovermetest");
+        }
+
+        public void SetProjectPath(string projectPath)
+        {
+            if (string.IsNullOrEmpty(ProjectPath))
+            {
+                ProjectPath = projectPath;
+            }
         }
     }
 }

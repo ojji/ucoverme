@@ -25,7 +25,6 @@ namespace UCoverme.Instrumentation
 
         // WARNING: these are the references to the data collector assembly
         // if the method signatures are changing in the data collector, we have change these too!
-        private readonly Type _dataCollectorType = typeof(UCovermeDataCollector);
         private TypeReference _testExecutionDataTypeReference;
         private MethodReference _getDataCollectorMethodReference;
         private MethodReference _branchEnteredMethodReference;
@@ -41,7 +40,7 @@ namespace UCoverme.Instrumentation
             CreateTempCopies(_instrumentedAssembly.AssemblyPaths);
         }
 
-        public void Instrument()
+        public void Instrument(string projectPath)
         {
             using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(
                 _instrumentedAssembly.AssemblyPaths.TempAssemblyPath,
@@ -69,7 +68,7 @@ namespace UCoverme.Instrumentation
                         foreach (var method in instrumentedClass.Methods)
                         {
                             Console.WriteLine($"\t{method.Name}");
-                            InstrumentMethod(assemblyDefinition, method);
+                            InstrumentMethod(assemblyDefinition, method, projectPath);
                         }
                     }
                 }
@@ -85,12 +84,13 @@ namespace UCoverme.Instrumentation
 
         private void ImportAndSetInstrumentationMethodReferences(AssemblyDefinition assemblyDefinition)
         {
+            Type dataCollectorType = typeof(UCovermeDataCollector);
             Type testExecutionDataType = typeof(TestExecutionData);
 
-            assemblyDefinition.MainModule.ImportReference(_dataCollectorType);
+            assemblyDefinition.MainModule.ImportReference(dataCollectorType);
             _testExecutionDataTypeReference = assemblyDefinition.MainModule.ImportReference(testExecutionDataType);
 
-            var getDataCollectorMethodInfo = _dataCollectorType.GetMethod("GetDataCollector");
+            var getDataCollectorMethodInfo = dataCollectorType.GetMethod("GetDataCollector", new [] { typeof(string) });
             _getDataCollectorMethodReference =
                 assemblyDefinition.MainModule.ImportReference(getDataCollectorMethodInfo);
 
@@ -127,7 +127,7 @@ namespace UCoverme.Instrumentation
             File.Copy(assemblyPaths.OriginalPdbPath, assemblyPaths.TempPdbPath, true);
         }
 
-        private void InstrumentMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method)
+        private void InstrumentMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method, string projectPath)
         {
             var ilProcessor = GetILProcessorForMethod(assemblyDefinition, method.MethodId);
             ilProcessor.Body.InitLocals = true;
@@ -139,7 +139,7 @@ namespace UCoverme.Instrumentation
             var branchSegments = GetInstructionSegments(originalInstructions, method.Branches);
             var sequencePointSegments = GetInstructionSegments(originalInstructions, method.SequencePoints);
 
-            var testExecutionDataVariable = InsertDataCollector(ilProcessor, originalInstructions);
+            var testExecutionDataVariable = InsertDataCollector(ilProcessor, originalInstructions, projectPath);
             CreateBranchEnters(ilProcessor, method.MethodId, testExecutionDataVariable, branchSegments);
             CreateBranchExits(ilProcessor, method.MethodId, testExecutionDataVariable, branchSegments);
             CreateSequencePointHits(ilProcessor, method.MethodId, testExecutionDataVariable, sequencePointSegments);
@@ -207,20 +207,24 @@ namespace UCoverme.Instrumentation
         }
 
         private VariableReference InsertDataCollector(ILProcessor ilProcessor,
-            Instruction[] originalInstructions)
+            Instruction[] originalInstructions, string projectPath)
         {
             var testExecutionDataVariable = new VariableDefinition(_testExecutionDataTypeReference);
             ilProcessor.Body.Variables.Add(testExecutionDataVariable);
 
+            var setProjectPathInstruction = ilProcessor.Create(OpCodes.Ldstr, projectPath);
             var getDataCollectorInstruction = ilProcessor.Create(OpCodes.Call, _getDataCollectorMethodReference);
             var storeDataCollectorInstruction = ilProcessor.Create(OpCodes.Stloc, testExecutionDataVariable);
 
             var originalInstruction = originalInstructions[0];
             ilProcessor.InsertAllBefore(originalInstruction,
+                setProjectPathInstruction,
                 getDataCollectorInstruction,
                 storeDataCollectorInstruction);
 
-            UpdateInstructionReference(ilProcessor.Body, originalInstruction, getDataCollectorInstruction);
+            UpdateInstructionReference(ilProcessor.Body, 
+                originalInstruction,
+                setProjectPathInstruction);
 
             return testExecutionDataVariable;
         }

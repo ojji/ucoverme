@@ -15,13 +15,14 @@ namespace UCoverme.DataCollector.DataCollectors
 
         public string DataCollectorName => "xunit";
 
-        public TestExecutionData GetDataCollector()
+        public TestExecutionData GetDataCollector(string projectPath)
         {
             lock (LockObject)
             {
                 if (CurrentTestExecution.Value == null)
                 {
                     var current = TestExecutionData.Start(DataCollectorName, Guid.NewGuid(), TestExecutionUtils.GetCurrentMethodFromStacktrace());
+                    current.SetProjectPath(projectPath);
 
                     GlobalTestExecutions.Add(current);
                     CurrentTestExecution.Value = current;

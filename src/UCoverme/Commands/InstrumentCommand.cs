@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using McMaster.Extensions.CommandLineUtils;
 using Newtonsoft.Json;
+using UCoverme.DataCollector.Utils;
 using UCoverme.Model;
 using UCoverme.ModelBuilder;
 using UCoverme.ModelBuilder.Filters;
@@ -22,6 +23,8 @@ namespace UCoverme.Commands
         private readonly CommandOption _disableDefaultFilters;
         private readonly FilterOption _filterOption;
 
+        private readonly CommandOption _dumpMethodsOption;
+        
         public InstrumentCommand()
         {
             _targetOption = new PathOption("--target|-t <PATH>")
@@ -49,6 +52,9 @@ namespace UCoverme.Commands
                 ShowInHelpText = true
             };
 
+            _dumpMethodsOption = new CommandOption("--dump", CommandOptionType.NoValue);
+            Options.Add(_dumpMethodsOption);
+        
             Options.Add(_targetOption);
             Options.Add(_disableDefaultFilters);
             Options.Add(_filterOption);
@@ -85,7 +91,7 @@ namespace UCoverme.Commands
             var projectId = Guid.NewGuid();
             var projectPath = Path.Combine(coverageDirectory, $"{projectId}.ucovermeproj");
 
-            UCovermeProject uCovermeProject = new UCovermeProject(projectId);
+            UCovermeProject uCovermeProject = new UCovermeProject(projectId, projectPath);
 
             foreach (var path in targetPaths)
             {
@@ -94,15 +100,17 @@ namespace UCoverme.Commands
             }
 
             uCovermeProject.Instrument();
+            uCovermeProject.WriteToFile();
 
-            var jsonSerializer = new JsonSerializer();
-            using (var sw = new StreamWriter(File.Create(projectPath)))
-            using (var jsonWriter = new JsonTextWriter(sw))
+            if (_dumpMethodsOption.HasValue())
             {
-                jsonSerializer.Serialize(jsonWriter, uCovermeProject);
+                var logFile = Path.Combine(coverageDirectory, "methods.log");
+                logFile.Empty();
+                foreach (var method in uCovermeProject.Assemblies.Where(a => !a.IsSkipped).SelectMany(a => a.Classes).SelectMany(c => c.Methods))
+                {
+                    logFile.Log(method.Debug());
+                }
             }
-
-            Console.WriteLine($"Project file created: {projectPath}");
         }
 
         private string GetCoverageDirectory()

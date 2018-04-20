@@ -5,7 +5,7 @@ namespace UCoverme.DataCollector.DataCollectors
     public interface IDataCollector
     {
         string DataCollectorName { get; }
-        TestExecutionData GetDataCollector();
+        TestExecutionData GetDataCollector(string projectPath);
         void TestSessionEnd(TestSessionEndArgs testSessionEndArgs);
         void TestSessionStart(TestSessionStartArgs testSessionStartArgs);
         void TestCaseStart(TestCaseStartArgs testCaseStartArgs);

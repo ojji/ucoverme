@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using Newtonsoft.Json;
 using UCoverme.DataCollector;
 using UCoverme.Instrumentation;
 
@@ -9,14 +10,14 @@ namespace UCoverme.Model
     public class UCovermeProject
     {
         public Guid ProjectId { get; }
-        public string CoverageDirectory { get; }
+        public string ProjectPath { get; }
         public List<InstrumentedAssembly> Assemblies { get; }
         public HashSet<string> DataCollectorAssemblyPaths { get; set; }
 
-        public UCovermeProject(Guid projectId)
+        public UCovermeProject(Guid projectId, string projectPath)
         {
             ProjectId = projectId;
-            CoverageDirectory = Path.Combine(Directory.GetCurrentDirectory(), "coverage");
+            ProjectPath = projectPath;
             Assemblies = new List<InstrumentedAssembly>();
             DataCollectorAssemblyPaths = new HashSet<string>();
         }
@@ -43,7 +44,7 @@ namespace UCoverme.Model
 
                     CopyDataCollectorAssembly(model.AssemblyPaths);
                     var instrumenter = new Instrumenter(model);
-                    instrumenter.Instrument();
+                    instrumenter.Instrument(ProjectPath);
                 }
             }
         }
@@ -85,6 +86,18 @@ namespace UCoverme.Model
             {
                 DataCollectorAssemblyPaths.Add(outputPath);
             }
+        }
+
+        public void WriteToFile()
+        {
+            var jsonSerializer = new JsonSerializer();
+            using (var sw = new StreamWriter(File.Create(ProjectPath)))
+            using (var jsonWriter = new JsonTextWriter(sw))
+            {
+                jsonSerializer.Serialize(jsonWriter, this);
+            }
+
+            Console.WriteLine($"Project file created: {ProjectPath}");
         }
     }
 }
