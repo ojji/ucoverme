@@ -15,7 +15,6 @@ namespace UCoverme.ModelBuilder
         public Instruction[] Instructions { get; }
         public InstrumentedSequencePoint[] SequencePoints { get; }
 
-        private readonly SequencePoint[] _sequencePoints;
         private readonly List<Branch> _generatedFinallyHandlers;
 
         private InstrumentedMethodBuilder(MethodDefinition method)
@@ -25,21 +24,89 @@ namespace UCoverme.ModelBuilder
             nodeCache.Create(Instructions[0], out var startingNode);
             startingNode.ParseChild(nodeCache);
 
-            _sequencePoints = method.DebugInformation.SequencePoints.OrderBy(sp => sp.Offset).ToArray();
-            _generatedFinallyHandlers = GetGeneratedFinallyHandlers(method);
+            var sequencePoints = method.DebugInformation.SequencePoints.OrderBy(sp => sp.Offset).ToArray();
+            SequencePoints = GetSequencePoints(sequencePoints);
+            _generatedFinallyHandlers = GetGeneratedFinallyHandlers(method, sequencePoints);
 
+            
             Conditions = GetConditions(nodeCache);
-            Branches = GetBranches();
-            SequencePoints = GetSequencePoints();
+            Branches = MergeGeneratedCodeSections(nodeCache);
         }
 
-        private InstrumentedSequencePoint[] GetSequencePoints()
+        private Branch[] MergeGeneratedCodeSections(NodeCache nodeCache)
+        {
+            var codeSections = nodeCache.GetCodeSections();
+            List<Branch> sections = new List<Branch>();
+            int id = 0;
+
+            var inGeneratedSection = false;
+            var startIndex = -1;
+            for (int i = 0; i < codeSections.Length - 1; i++)
+            {
+                if (!inGeneratedSection &&
+                    InGeneratedFinally(codeSections[i + 1].StartOffset))
+                {
+                    inGeneratedSection = true;
+                    startIndex = i;
+                }
+                else if (!inGeneratedSection &&
+                         !InGeneratedFinally(codeSections[i + 1].StartOffset))
+                {
+                    sections.Add(new Branch(id++, codeSections[i].StartOffset, codeSections[i].EndOffset));
+                } 
+                else if (inGeneratedSection &&
+                         InGeneratedFinally(codeSections[i + 1].StartOffset))
+                {
+                    continue;
+                } else if (inGeneratedSection &&
+                           !InGeneratedFinally(codeSections[i + 1].StartOffset))
+                {
+                    sections.Add(
+                        new Branch(
+                            id++, 
+                            codeSections[startIndex].StartOffset,
+                            codeSections[i + 1].EndOffset));
+                    startIndex = -1;
+                    i++;
+                    inGeneratedSection = false;
+                }
+            }
+
+            var lastSectionAdded = sections.LastOrDefault();
+            var lastSectionInOriginal = codeSections.Last();
+            if (lastSectionAdded == null ||
+                lastSectionAdded.EndOffset != lastSectionInOriginal.EndOffset)
+            {
+                sections.Add(
+                    new Branch(id, 
+                        lastSectionInOriginal.StartOffset, 
+                        lastSectionInOriginal.EndOffset));
+            }
+
+            return sections.ToArray();
+        }
+
+        private Condition[] GetConditions(NodeCache nodeCache)
+        {
+            var codeSections = nodeCache.GetCodeSections();
+            var exitConditions = codeSections.Where(section => section.HasMultipleExits)
+                .SelectMany(section => section.GetExitConditions())
+                .Where(condition => !ExitsIntoGeneratedFinally(condition.Start)).ToList();
+
+            var enterConditions = codeSections.Where(section => section.HasMultipleEnters)
+                .SelectMany(section => section.GetEnterConditions())
+                .Where(condition => !EnteredFromGeneratedFinally(condition.Target)).ToList();
+
+            return exitConditions.Concat(enterConditions).Distinct().ToArray();
+        }
+        
+        private InstrumentedSequencePoint[] GetSequencePoints(SequencePoint[] sequencePoints)
         {
             List<InstrumentedSequencePoint> instrumentedSequencePoints = new List<InstrumentedSequencePoint>();
-            for (int i = 0; i < _sequencePoints.Length; i++)
+            for (int i = 0; i < sequencePoints.Length; i++)
             {
-                int startOffset = _sequencePoints[i].Offset;
-                int nextStartOffset = i + 1 < _sequencePoints.Length ? _sequencePoints[i + 1].Offset : int.MaxValue;
+                int startOffset = sequencePoints[i].Offset;
+                int nextStartOffset = i + 1 < sequencePoints.Length ? sequencePoints[i + 1].Offset : int.MaxValue;
                 int endOffset = Instructions.Select(instruction => instruction.Offset).SkipWhile(offset => offset < startOffset)
                     .TakeWhile(offset => offset < nextStartOffset)
                     .Last();
@@ -47,13 +114,13 @@ namespace UCoverme.ModelBuilder
                 instrumentedSequencePoints.Add(
                     new InstrumentedSequencePoint(
                         i,
-                        _sequencePoints[i].Document.Url,
+                        sequencePoints[i].Document.Url,
                         startOffset,
                         endOffset,
-                        _sequencePoints[i].StartLine,
-                        _sequencePoints[i].EndLine,
-                        _sequencePoints[i].StartColumn,
-                        _sequencePoints[i].EndColumn
+                        sequencePoints[i].StartLine,
+                        sequencePoints[i].EndLine,
+                        sequencePoints[i].StartColumn,
+                        sequencePoints[i].EndColumn
                         ));
             }
 
@@ -61,12 +128,12 @@ namespace UCoverme.ModelBuilder
         }
 
 
-        private List<Branch> GetGeneratedFinallyHandlers(MethodDefinition method)
+        private List<Branch> GetGeneratedFinallyHandlers(MethodDefinition method, SequencePoint[] sequencePoints)
         {
             int generatedBranchId = 0; // this is whatever, the offsets are the key
             var generatedFinallyHandlers = method.Body.ExceptionHandlers
                 .Where(handler => handler.HandlerType == ExceptionHandlerType.Finally &&
-                                  !_sequencePoints.Any(sp =>
+                                  !sequencePoints.Any(sp =>
                                       sp.Offset >= handler.HandlerStart.Offset &&
                                       sp.Offset < handler.HandlerEnd.Offset &&
                                       !sp.IsHidden))
@@ -92,77 +159,11 @@ namespace UCoverme.ModelBuilder
             return endFinally.Offset;
         }
 
-        public static InstrumentedMethodBuilder Build(MethodDefinition method)
-        {
-            return new InstrumentedMethodBuilder(method);
-        }
-
-        private Branch[] GetBranches()
-        {
-            var branchStartOffsets = Conditions
-                .Select(lp => lp.Target.Instruction.Offset)
-                .Prepend(Instructions[0].Offset)
-                .OrderBy(offset => offset)
-                .Distinct()
-                .ToArray();
-
-            var retInstructions = Instructions.Where(i => i.OpCode.FlowControl == FlowControl.Return && !InGeneratedFinally(i.Offset)).Select(i => i.Offset);
-            var throwInstructions = Instructions.Where(i => i.OpCode.FlowControl == FlowControl.Throw && !InGeneratedFinally(i.Offset)).Select(i => i.Offset);
-
-            var branchExitOffsets = Conditions
-                .Select(lp => lp.Start.Instruction.Offset)
-                .Union(retInstructions)
-                .Union(throwInstructions)
-                .OrderBy(offset => offset)
-                .Distinct()
-                .ToArray();
-
-            if (branchStartOffsets.Length != branchExitOffsets.Length)
-            {
-                throw new InvalidOperationException("The start and the end offset count is not equal.");
-            }
-
-            var branches = new Branch[branchStartOffsets.Length];
-            for (int i = 0; i < branchStartOffsets.Length; i++)
-            {
-                branches[i] = new Branch(i, branchStartOffsets[i], branchExitOffsets[i]);
-            }
-
-            return branches;
-        }
-
         private bool InGeneratedFinally(int instructionOffset)
         {
             return _generatedFinallyHandlers.Any(handler =>
                 instructionOffset >= handler.StartOffset &&
                 instructionOffset <= handler.EndOffset);
-        }
-
-        private Condition[] GetConditions(NodeCache nodeCache)
-        {
-            var conditions = new List<Condition>();
-
-            var nodesWithMultipleExits = nodeCache
-                .GetNodesWithMultipleExits()
-                .Where(node => !ExitsIntoGeneratedFinally(node));
-
-            conditions.AddRange(
-                nodesWithMultipleExits
-                    .SelectMany(
-                        node => node.ExitNodes,
-                        (start, target) => new Condition(start, target)));
-
-            var nodesWithMultipleEnters = nodeCache
-                .GetNodesWithMultipleEnters()
-                .Where(node => !EnteredFromGeneratedFinally(node));
-
-            conditions.AddRange(
-                nodesWithMultipleEnters
-                    .SelectMany(
-                        node => node.NodesEntering,
-                        (target, start) => new Condition(start, target)));
-
-            return conditions.Distinct().ToArray();
         }
 
         private bool EnteredFromGeneratedFinally(InstructionNode node)
@@ -185,6 +186,11 @@ namespace UCoverme.ModelBuilder
                         .Any(branch => 
                             exit.Instruction.Offset >= branch.StartOffset &&
                             exit.Instruction.Offset <= branch.EndOffset));
+        }
+
+        public static InstrumentedMethodBuilder Build(MethodDefinition method)
+        {
+            return new InstrumentedMethodBuilder(method);
         }
     }
 }
