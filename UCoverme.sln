@@ -15,6 +15,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestLibrary", "test\TestLib
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TestLibrary.Tests.Nunit", "test\TestLibrary.Tests.Nunit\TestLibrary.Tests.Nunit.csproj", "{99B98BB8-1776-43CD-859A-673A82B6BCCD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestLibrary.Tests.Xunit", "test\TestLibrary.Tests.Xunit\TestLibrary.Tests.Xunit.csproj", "{F52AF678-ACB2-44EC-B848-A630F4A65311}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -37,6 +39,10 @@ Global
 		{99B98BB8-1776-43CD-859A-673A82B6BCCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{99B98BB8-1776-43CD-859A-673A82B6BCCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{99B98BB8-1776-43CD-859A-673A82B6BCCD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F52AF678-ACB2-44EC-B848-A630F4A65311}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F52AF678-ACB2-44EC-B848-A630F4A65311}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F52AF678-ACB2-44EC-B848-A630F4A65311}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F52AF678-ACB2-44EC-B848-A630F4A65311}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -46,6 +52,7 @@ Global
 		{8991449C-5923-4CC5-AC94-756F2B4164B6} = {13D016EA-39A4-4A00-9A3B-EFC9725EC62F}
 		{1B277269-88A5-42CB-B778-F08D36681934} = {2080555E-F079-4565-9C8A-BDD6D8FEF556}
 		{99B98BB8-1776-43CD-859A-673A82B6BCCD} = {2080555E-F079-4565-9C8A-BDD6D8FEF556}
+		{F52AF678-ACB2-44EC-B848-A630F4A65311} = {2080555E-F079-4565-9C8A-BDD6D8FEF556}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {A0D69FA0-350B-4F48-90D5-233DD9A3F566}
