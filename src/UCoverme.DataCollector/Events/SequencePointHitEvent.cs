@@ -5,7 +5,7 @@
         public int MethodId { get; }
         public int SequencePointId { get; }
 
-        public SequencePointHitEvent(int methodId, int sequencePointId) : base(ExecutionEventType.SequencePointEntered)
+        public SequencePointHitEvent(int methodId, int sequencePointId) : base(ExecutionEventType.SequencePointHit)
         {
             MethodId = methodId;
             SequencePointId = sequencePointId;

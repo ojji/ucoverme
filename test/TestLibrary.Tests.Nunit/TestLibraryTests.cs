@@ -11,7 +11,6 @@ namespace TestLibrary.Tests.Nunit
         public void Two_plus_two_should_be_four(int first, int second, int result)
         {
             var subject = new TestLibrary();
-            var fullname = TestContext.CurrentContext.Test.FullName;
             Assert.That(subject.Add(first, second), Is.EqualTo(result));
         }
 

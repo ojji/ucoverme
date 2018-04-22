@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel.DataCollector.InProcDataCollector;
@@ -20,7 +19,7 @@ namespace UCoverme.DataCollector.DataCollectors
 
         public string DataCollectorName => "nunit";
 
-        public TestExecutionData GetDataCollector(string projectPath)
+        public MethodExecutionData GetDataCollector(string projectPath, int methodId)
         {
             lock (LockObject)
             {
@@ -30,7 +29,7 @@ namespace UCoverme.DataCollector.DataCollectors
                 }
 
                 currentContext.SetProjectPath(projectPath);
-                return currentContext;
+                return currentContext.MethodEntered(methodId);
             }
         }
 
@@ -63,7 +62,6 @@ namespace UCoverme.DataCollector.DataCollectors
                     throw new InvalidOperationException("Could not delete the test execution context.");
                 }
                 currentTestExecution.End(testCaseEndArgs.TestOutcome);
-                currentTestExecution.DumpSummary();
             }
         }
 

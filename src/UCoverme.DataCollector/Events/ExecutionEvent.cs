@@ -36,5 +36,10 @@ namespace UCoverme.DataCollector.Events
         {
             return new BranchExitedEvent(methodId, branchId);
         }
+
+        public static ExecutionEvent MethodEntered(int methodId)
+        {
+            return new MethodEnteredEvent(methodId);
+        }
     }
 }

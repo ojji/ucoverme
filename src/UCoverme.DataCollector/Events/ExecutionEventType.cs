@@ -4,8 +4,9 @@
     {
         BranchEntered,
         BranchExited,
-        SequencePointEntered,
+        SequencePointHit,
         TestCaseStarted,
-        TestCaseEnded
+        TestCaseEnded,
+        MethodEntered
     }
 }

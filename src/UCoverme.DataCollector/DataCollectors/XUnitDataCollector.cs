@@ -15,7 +15,7 @@ namespace UCoverme.DataCollector.DataCollectors
 
         public string DataCollectorName => "xunit";
 
-        public TestExecutionData GetDataCollector(string projectPath)
+        public MethodExecutionData GetDataCollector(string projectPath, int methodId)
         {
             lock (LockObject)
             {
@@ -28,7 +28,7 @@ namespace UCoverme.DataCollector.DataCollectors
                     CurrentTestExecution.Value = current;
                 }
 
-                return CurrentTestExecution.Value;
+                return CurrentTestExecution.Value.MethodEntered(methodId);
             }
         }
 
@@ -42,7 +42,7 @@ namespace UCoverme.DataCollector.DataCollectors
             {
                 foreach (var testExecution in GlobalTestExecutions)
                 {
-                    testExecution.DumpSummary();
+                    testExecution.WriteSummary();
                 }
             }
         }

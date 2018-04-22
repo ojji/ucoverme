@@ -25,7 +25,7 @@ namespace UCoverme.Instrumentation
 
         // WARNING: these are the references to the data collector assembly
         // if the method signatures are changing in the data collector, we have change these too!
-        private TypeReference _testExecutionDataTypeReference;
+        private TypeReference _methodExecutionDataTypeReference;
         private MethodReference _getDataCollectorMethodReference;
         private MethodReference _branchEnteredMethodReference;
         private MethodReference _branchExitedMethodReference;
@@ -85,28 +85,28 @@ namespace UCoverme.Instrumentation
         private void ImportAndSetInstrumentationMethodReferences(AssemblyDefinition assemblyDefinition)
         {
             Type dataCollectorType = typeof(UCovermeDataCollector);
-            Type testExecutionDataType = typeof(TestExecutionData);
+            Type methodExecutionDataType = typeof(MethodExecutionData);
 
             assemblyDefinition.MainModule.ImportReference(dataCollectorType);
-            _testExecutionDataTypeReference = assemblyDefinition.MainModule.ImportReference(testExecutionDataType);
+            _methodExecutionDataTypeReference = assemblyDefinition.MainModule.ImportReference(methodExecutionDataType);
 
-            var getDataCollectorMethodInfo = dataCollectorType.GetMethod("GetDataCollector", new [] { typeof(string) });
+            var getDataCollectorMethodInfo = dataCollectorType.GetMethod("GetDataCollector", new [] { typeof(string), typeof(int) });
             _getDataCollectorMethodReference =
                 assemblyDefinition.MainModule.ImportReference(getDataCollectorMethodInfo);
 
             // BranchEntered
             var branchEnteredMethodInfo =
-                testExecutionDataType.GetMethod("BranchEntered", new[] {typeof(int), typeof(int)});
+                methodExecutionDataType.GetMethod("BranchEntered", new[] {typeof(int)});
             _branchEnteredMethodReference = assemblyDefinition.MainModule.ImportReference(branchEnteredMethodInfo);
 
             // BranchExited
             var branchExitedMethodInfo =
-                testExecutionDataType.GetMethod("BranchExited", new[] {typeof(int), typeof(int)});
+                methodExecutionDataType.GetMethod("BranchExited", new[] {typeof(int)});
             _branchExitedMethodReference = assemblyDefinition.MainModule.ImportReference(branchExitedMethodInfo);
 
             // SequencePointHit
             var sequencePointHitMethodInfo =
-                testExecutionDataType.GetMethod("SequencePointHit", new[] {typeof(int), typeof(int)});
+                methodExecutionDataType.GetMethod("SequencePointHit", new[] {typeof(int)});
             _sequencePointHitMethodReference =
                 assemblyDefinition.MainModule.ImportReference(sequencePointHitMethodInfo);
         }
@@ -139,10 +139,10 @@ namespace UCoverme.Instrumentation
             var branchSegments = GetInstructionSegments(originalInstructions, method.Branches);
             var sequencePointSegments = GetInstructionSegments(originalInstructions, method.SequencePoints);
 
-            var testExecutionDataVariable = InsertDataCollector(ilProcessor, originalInstructions, projectPath);
-            CreateBranchEnters(ilProcessor, method.MethodId, testExecutionDataVariable, branchSegments);
-            CreateBranchExits(ilProcessor, method.MethodId, testExecutionDataVariable, branchSegments);
-            CreateSequencePointHits(ilProcessor, method.MethodId, testExecutionDataVariable, sequencePointSegments);
+            var testExecutionDataVariable = InsertDataCollector(ilProcessor, method.MethodId, originalInstructions, projectPath);
+            CreateBranchEnters(ilProcessor, testExecutionDataVariable, branchSegments);
+            CreateBranchExits(ilProcessor, testExecutionDataVariable, branchSegments);
+            CreateSequencePointHits(ilProcessor, testExecutionDataVariable, sequencePointSegments);
 
             InsertInstrumentationInstructions(ilProcessor, originalInstructions);
             ClearBeforeAndAfterInstructions();
@@ -206,19 +206,24 @@ namespace UCoverme.Instrumentation
             return segmentedInstructions;
         }
 
-        private VariableReference InsertDataCollector(ILProcessor ilProcessor,
-            Instruction[] originalInstructions, string projectPath)
+        private VariableReference InsertDataCollector(
+            ILProcessor ilProcessor,
+            int methodId,
+            Instruction[] originalInstructions, 
+            string projectPath)
         {
-            var testExecutionDataVariable = new VariableDefinition(_testExecutionDataTypeReference);
+            var testExecutionDataVariable = new VariableDefinition(_methodExecutionDataTypeReference);
             ilProcessor.Body.Variables.Add(testExecutionDataVariable);
 
             var setProjectPathInstruction = ilProcessor.Create(OpCodes.Ldstr, projectPath);
+            var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
             var getDataCollectorInstruction = ilProcessor.Create(OpCodes.Call, _getDataCollectorMethodReference);
             var storeDataCollectorInstruction = ilProcessor.Create(OpCodes.Stloc, testExecutionDataVariable);
 
             var originalInstruction = originalInstructions[0];
             ilProcessor.InsertAllBefore(originalInstruction,
                 setProjectPathInstruction,
+                methodIdParameterInstruction,
                 getDataCollectorInstruction,
                 storeDataCollectorInstruction);
 
@@ -230,63 +235,54 @@ namespace UCoverme.Instrumentation
         }
 
         private void CreateBranchEnters(ILProcessor ilProcessor,
-            int methodId,
             VariableReference testExecutionDataVariable,
             IReadOnlyList<ArraySegment<Instruction>> branches)
         {
             for (int i = 0; i < branches.Count; i++)
             {
                 var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
-                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
                 var branchIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
                 var enterBranchInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchEnteredMethodReference);
 
                 CreateEnterInstruction(branches[i], 
                     InstrumentationType.BranchEnter,
                     loadCollectorInstruction,
-                    methodIdParameterInstruction,
                     branchIdParameterInstruction,
                     enterBranchInstruction);
             }
         }
 
         private void CreateBranchExits(ILProcessor ilProcessor,
-            int methodId,
             VariableReference testExecutionDataVariable,
             IReadOnlyList<ArraySegment<Instruction>> branches)
         {
             for (int i = 0; i < branches.Count; i++)
             {
                 var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
-                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
                 var branchIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
                 var exitBranchInstruction = ilProcessor.Create(OpCodes.Callvirt, _branchExitedMethodReference);
 
                 CreateExitInstruction(branches[i],
                     InstrumentationType.BranchExit,
                     loadCollectorInstruction,
-                    methodIdParameterInstruction,
                     branchIdParameterInstruction,
                     exitBranchInstruction);
             }
         }
 
         private void CreateSequencePointHits(ILProcessor ilProcessor,
-            int methodId,
             VariableReference testExecutionDataVariable,
             IReadOnlyList<ArraySegment<Instruction>> sequencePoints)
         {
             for (int i = 0; i < sequencePoints.Count; i++)
             {
                 var loadCollectorInstruction = ilProcessor.Create(OpCodes.Ldloc, testExecutionDataVariable.Index);
-                var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
                 var sequencePointIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, i);
                 var sequencePointHidInstruction = ilProcessor.Create(OpCodes.Callvirt, _sequencePointHitMethodReference);
 
                 CreateExitInstruction(sequencePoints[i],
                     InstrumentationType.SequencePointHit,
                     loadCollectorInstruction,
-                    methodIdParameterInstruction,
                     sequencePointIdParameterInstruction,
                     sequencePointHidInstruction);
             }

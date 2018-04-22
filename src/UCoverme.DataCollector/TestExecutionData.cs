@@ -14,15 +14,25 @@ namespace UCoverme.DataCollector
         public TestOutcome TestResult { get; private set; }
         public string ProjectPath { get; private set; }
 
-        private readonly ConcurrentQueue<ExecutionEvent> _executionEvents;
+        private readonly ConcurrentQueue<MethodExecutionData> _methodsExecuted;
+        private readonly ConcurrentQueue<ExecutionEvent> _testCaseEvents;
 
         private TestExecutionData(string dataCollectorName, Guid testCaseId, string testCaseName)
         {
             DataCollectorName = dataCollectorName;
             TestCaseId = testCaseId;
             TestCaseName = testCaseName;
-            _executionEvents = new ConcurrentQueue<ExecutionEvent>();
-            _executionEvents.Enqueue(ExecutionEvent.TestCaseStarted(testCaseId, testCaseName));
+            _methodsExecuted = new ConcurrentQueue<MethodExecutionData>();
+            _testCaseEvents = new ConcurrentQueue<ExecutionEvent>();
+            _testCaseEvents.Enqueue(ExecutionEvent.TestCaseStarted(testCaseId, testCaseName));
+        }
+
+        public MethodExecutionData MethodEntered(int methodId)
+        {
+            var methodDataCollector = new MethodExecutionData(methodId);
+            _methodsExecuted.Enqueue(methodDataCollector);
+            _testCaseEvents.Enqueue(ExecutionEvent.MethodEntered(methodId));
+            return methodDataCollector;
         }
 
         public static TestExecutionData Start(string dataCollectorName, Guid testCaseId, string testCaseName)
@@ -30,34 +40,30 @@ namespace UCoverme.DataCollector
             return new TestExecutionData(dataCollectorName, testCaseId, testCaseName);
         }
 
-        public void BranchEntered(int methodId, int branchId)
-        {
-            _executionEvents.Enqueue(ExecutionEvent.BranchEntered(methodId, branchId));
-        }
-
-        public void BranchExited(int methodId, int branchId)
-        {
-            _executionEvents.Enqueue(ExecutionEvent.BranchExited(methodId, branchId));
-        }
-
-        public void SequencePointHit(int methodId, int branchId)
-        {
-            _executionEvents.Enqueue(ExecutionEvent.SequencePointHit(methodId, branchId));
-        }
-
         public void End(TestOutcome result)
         {
-            _executionEvents.Enqueue(ExecutionEvent.TestCaseEnded(result));
+            _testCaseEvents.Enqueue(ExecutionEvent.TestCaseEnded(result));
             TestResult = result;
+            WriteSummary();
         }
 
-        public void DumpSummary()
+        public void WriteSummary()
         {
             using (var writer = new StreamWriter(File.Open(GetTestCaseFilename(), FileMode.Create)))
             {
-                foreach (var executionEvent in _executionEvents)
+                foreach (var executionEvent in _testCaseEvents)
                 {
                     writer.WriteLine($"[{TestCaseId} - {TestCaseName}] - {executionEvent}");
+                }
+
+                writer.WriteLine("\n--- Method executions ---");
+                foreach (var method in _methodsExecuted)
+                {
+                    foreach (var executionEvent in method.ExecutionEvents)
+                    {
+                                writer.WriteLine($"[{method.MethodId}] - {executionEvent}");
+                    }
+                    writer.Write("\n\n");
                 }
             }
         }
