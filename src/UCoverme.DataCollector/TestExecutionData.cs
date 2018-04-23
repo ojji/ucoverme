@@ -14,24 +14,24 @@ namespace UCoverme.DataCollector
         public TestOutcome TestResult { get; private set; }
         public string ProjectPath { get; private set; }
 
-        private readonly ConcurrentQueue<MethodExecutionData> _methodsExecuted;
-        private readonly ConcurrentQueue<ExecutionEvent> _testCaseEvents;
+        public ConcurrentQueue<MethodExecutionData> MethodsExecuted { get; }
+        public ConcurrentQueue<ExecutionEvent> TestCaseEvents { get; }
 
         private TestExecutionData(string dataCollectorName, Guid testCaseId, string testCaseName)
         {
             DataCollectorName = dataCollectorName;
             TestCaseId = testCaseId;
             TestCaseName = testCaseName;
-            _methodsExecuted = new ConcurrentQueue<MethodExecutionData>();
-            _testCaseEvents = new ConcurrentQueue<ExecutionEvent>();
-            _testCaseEvents.Enqueue(ExecutionEvent.TestCaseStarted(testCaseId, testCaseName));
+            MethodsExecuted = new ConcurrentQueue<MethodExecutionData>();
+            TestCaseEvents = new ConcurrentQueue<ExecutionEvent>();
+            TestCaseEvents.Enqueue(ExecutionEvent.TestCaseStarted(testCaseId, testCaseName));
         }
 
         public MethodExecutionData MethodEntered(int methodId)
         {
             var methodDataCollector = new MethodExecutionData(methodId);
-            _methodsExecuted.Enqueue(methodDataCollector);
-            _testCaseEvents.Enqueue(ExecutionEvent.MethodEntered(methodId));
+            MethodsExecuted.Enqueue(methodDataCollector);
+            TestCaseEvents.Enqueue(ExecutionEvent.MethodEntered(methodId));
             return methodDataCollector;
         }
 
@@ -42,33 +42,12 @@ namespace UCoverme.DataCollector
 
         public void End(TestOutcome result)
         {
-            _testCaseEvents.Enqueue(ExecutionEvent.TestCaseEnded(result));
+            TestCaseEvents.Enqueue(ExecutionEvent.TestCaseEnded(result));
             TestResult = result;
-            WriteSummary();
+            TestExecutionSummary.WriteToFile(this);
         }
 
-        public void WriteSummary()
-        {
-            using (var writer = new StreamWriter(File.Open(GetTestCaseFilename(), FileMode.Create)))
-            {
-                foreach (var executionEvent in _testCaseEvents)
-                {
-                    writer.WriteLine($"[{TestCaseId} - {TestCaseName}] - {executionEvent}");
-                }
-
-                writer.WriteLine("\n--- Method executions ---");
-                foreach (var method in _methodsExecuted)
-                {
-                    foreach (var executionEvent in method.ExecutionEvents)
-                    {
-                                writer.WriteLine($"[{method.MethodId}] - {executionEvent}");
-                    }
-                    writer.Write("\n\n");
-                }
-            }
-        }
-
-        private string GetTestCaseFilename()
+        public string GetTestCaseFilename()
         {
             var coverageDirectory = Path.GetDirectoryName(ProjectPath);
             return Path.Combine(coverageDirectory, $"{DataCollectorName}-{TestCaseId.ToString()}.ucovermetest");

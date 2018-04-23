@@ -19,7 +19,7 @@ namespace UCoverme.DataCollector.Utils
                 if (methodAttributes
                     .Any(name => KnownTestAttributes.Contains(name)))
                 {
-                    return method.Name;
+                    return $"{method.ReflectedType.FullName}.{method.Name}";
                 }
             }
 
