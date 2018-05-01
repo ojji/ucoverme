@@ -16,6 +16,7 @@ namespace UCoverme
 
             app.AddCommand(UCovermeCommand.InstrumentCommand());
             app.AddCommand(UCovermeCommand.UninstrumentCommand());
+            app.AddCommand(UCovermeCommand.CreateReportCommand());
 
             app.OnExecute(() =>
             {

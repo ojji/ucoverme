@@ -8,8 +8,10 @@ namespace UCoverme.Model
 {
     public class InstrumentedAssembly : ISkipable
     {
+        public int AssemblyId { get; }
         public string FullyQualifiedAssemblyName { get; }
         public AssemblyPaths AssemblyPaths { get; }
+        public string Hash { get; }
         public InstrumentedFile[] Files { get; }
         public InstrumentedClass[] Classes { get; }
 
@@ -19,24 +21,34 @@ namespace UCoverme.Model
         public SkipReason SkipReason { get; private set; }
 
         [JsonConstructor]
-        private InstrumentedAssembly(string fullyQualifiedAssemblyName, AssemblyPaths assemblyPaths,
+        private InstrumentedAssembly(int assemblyId, 
+            string fullyQualifiedAssemblyName, 
+            AssemblyPaths assemblyPaths,
+            string hash,
             InstrumentedFile[] files,
             InstrumentedClass[] classes,
             SkipReason skipReason)
         {
+            AssemblyId = assemblyId;
             FullyQualifiedAssemblyName = fullyQualifiedAssemblyName;
             AssemblyPaths = assemblyPaths;
+            Hash = hash;
             Files = files;
             Classes = classes;
             SkipReason = skipReason;
         }
 
-        public InstrumentedAssembly(string fullyQualifiedAssemblyName, AssemblyPaths assemblyPaths,
+        public InstrumentedAssembly(int assemblyId, 
+            string fullyQualifiedAssemblyName, 
+            AssemblyPaths assemblyPaths,
+            string hash,
             InstrumentedFile[] files,
             InstrumentedClass[] classes)
         {
+            AssemblyId = assemblyId;
             FullyQualifiedAssemblyName = fullyQualifiedAssemblyName;
             AssemblyPaths = assemblyPaths;
+            Hash = hash;
             Files = files;
             Classes = classes;
             SkipReason = SkipReason.NoSkip;
@@ -44,7 +56,7 @@ namespace UCoverme.Model
 
         public override string ToString()
         {
-            return $"{FullyQualifiedAssemblyName}";
+            return $"[{AssemblyId}] {FullyQualifiedAssemblyName}";
         }
 
         public void SkipFromInstrumentation(SkipReason reason)

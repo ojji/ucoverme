@@ -68,7 +68,7 @@ namespace UCoverme.Instrumentation
                         foreach (var method in instrumentedClass.Methods)
                         {
                             Console.WriteLine($"\t{method.Name}");
-                            InstrumentMethod(assemblyDefinition, method, projectPath);
+                            InstrumentMethod(assemblyDefinition, method, projectPath, _instrumentedAssembly.AssemblyId);
                         }
                     }
                 }
@@ -90,7 +90,7 @@ namespace UCoverme.Instrumentation
             assemblyDefinition.MainModule.ImportReference(dataCollectorType);
             _methodExecutionDataTypeReference = assemblyDefinition.MainModule.ImportReference(methodExecutionDataType);
 
-            var getDataCollectorMethodInfo = dataCollectorType.GetMethod("GetDataCollector", new [] { typeof(string), typeof(int) });
+            var getDataCollectorMethodInfo = dataCollectorType.GetMethod("GetDataCollector", new [] { typeof(string), typeof(int), typeof(int) });
             _getDataCollectorMethodReference =
                 assemblyDefinition.MainModule.ImportReference(getDataCollectorMethodInfo);
 
@@ -127,7 +127,7 @@ namespace UCoverme.Instrumentation
             File.Copy(assemblyPaths.OriginalPdbPath, assemblyPaths.TempPdbPath, true);
         }
 
-        private void InstrumentMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method, string projectPath)
+        private void InstrumentMethod(AssemblyDefinition assemblyDefinition, InstrumentedMethod method, string projectPath, int assemblyId)
         {
             var ilProcessor = GetILProcessorForMethod(assemblyDefinition, method.MethodId);
             ilProcessor.Body.InitLocals = true;
@@ -139,7 +139,7 @@ namespace UCoverme.Instrumentation
             var branchSegments = GetInstructionSegments(originalInstructions, method.Branches);
             var sequencePointSegments = GetInstructionSegments(originalInstructions, method.SequencePoints);
 
-            var testExecutionDataVariable = InsertDataCollector(ilProcessor, method.MethodId, originalInstructions, projectPath);
+            var testExecutionDataVariable = InsertDataCollector(ilProcessor, assemblyId, method.MethodId, originalInstructions, projectPath);
             CreateBranchEnters(ilProcessor, testExecutionDataVariable, branchSegments);
             CreateBranchExits(ilProcessor, testExecutionDataVariable, branchSegments);
             CreateSequencePointHits(ilProcessor, testExecutionDataVariable, sequencePointSegments);
@@ -174,7 +174,7 @@ namespace UCoverme.Instrumentation
             }
         }
 
-        private List<ArraySegment<Instruction>> GetInstructionSegments(Instruction[] instructions, IReadOnlyList<ICodeSegment> segments)
+        private List<ArraySegment<Instruction>> GetInstructionSegments(Instruction[] instructions, IReadOnlyList<ICodeSection> segments)
         {
             var segmentedInstructions = new List<ArraySegment<Instruction>>(segments.Count);
 
@@ -208,6 +208,7 @@ namespace UCoverme.Instrumentation
 
         private VariableReference InsertDataCollector(
             ILProcessor ilProcessor,
+            int assemblyId,
             int methodId,
             Instruction[] originalInstructions, 
             string projectPath)
@@ -216,6 +217,7 @@ namespace UCoverme.Instrumentation
             ilProcessor.Body.Variables.Add(testExecutionDataVariable);
 
             var setProjectPathInstruction = ilProcessor.Create(OpCodes.Ldstr, projectPath);
+            var assemblyIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, assemblyId);
             var methodIdParameterInstruction = ilProcessor.Create(OpCodes.Ldc_I4, methodId);
             var getDataCollectorInstruction = ilProcessor.Create(OpCodes.Call, _getDataCollectorMethodReference);
             var storeDataCollectorInstruction = ilProcessor.Create(OpCodes.Stloc, testExecutionDataVariable);
@@ -223,6 +225,7 @@ namespace UCoverme.Instrumentation
             var originalInstruction = originalInstructions[0];
             ilProcessor.InsertAllBefore(originalInstruction,
                 setProjectPathInstruction,
+                assemblyIdParameterInstruction,
                 methodIdParameterInstruction,
                 getDataCollectorInstruction,
                 storeDataCollectorInstruction);

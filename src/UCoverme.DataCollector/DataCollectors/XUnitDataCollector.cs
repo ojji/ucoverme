@@ -16,7 +16,7 @@ namespace UCoverme.DataCollector.DataCollectors
 
         public string DataCollectorName => "xunit";
 
-        public MethodExecutionData GetDataCollector(string projectPath, int methodId)
+        public MethodExecutionData GetDataCollector(string projectPath, int assemblyId, int methodId)
         {
             lock (LockObject)
             {
@@ -29,7 +29,7 @@ namespace UCoverme.DataCollector.DataCollectors
                     CurrentTestExecution.Value = current;
                 }
 
-                return CurrentTestExecution.Value.MethodEntered(methodId);
+                return CurrentTestExecution.Value.MethodEntered(assemblyId, methodId);
             }
         }
 

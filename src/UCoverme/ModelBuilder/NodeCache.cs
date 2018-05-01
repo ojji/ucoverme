@@ -9,36 +9,78 @@ namespace UCoverme.ModelBuilder
     public class NodeCache
     {
         private readonly Dictionary<int, InstructionNode> _generatedNodes;
-        private Branch[] _codeSections;
+        private CodeSection[] _codeSections;
+        
+        private static readonly OpCode[] CachedAnonymousDelegateInstructions = new[]
+        {
+            OpCodes.Ldsfld,
+            OpCodes.Dup,
+            OpCodes.Brtrue_S,
+            OpCodes.Pop,
+            OpCodes.Ldsfld,
+            OpCodes.Ldftn,
+            OpCodes.Newobj,
+            OpCodes.Dup,
+            OpCodes.Stsfld,
+            OpCodes.Newobj
+        };
 
         public NodeCache()
         {
             _generatedNodes = new Dictionary<int, InstructionNode>();
         }
 
-        public Branch[] GetCodeSections()
+        private List<CodeSection> FindSpecialCodeSections(Dictionary<int, InstructionNode> generatedNodes)
+        {
+            var specialSections = new List<CodeSection>();
+            FindCachedAnonymousDelegates(generatedNodes.Values.OrderBy(instruction => instruction.Instruction.Offset).Select(instruction => instruction.Instruction).ToArray(), specialSections);
+
+            return specialSections;
+        }
+
+        private void FindCachedAnonymousDelegates(Instruction[] instructions, List<CodeSection> specialSections)
+        {
+            for (int idx = 0; idx < instructions.Length - CachedAnonymousDelegateInstructions.Length + 1; idx++)
+            {
+                for (int innerIdx = 0; innerIdx < CachedAnonymousDelegateInstructions.Length; innerIdx++)
+                {
+                    if (instructions[idx + innerIdx].OpCode != CachedAnonymousDelegateInstructions[innerIdx])
+                    {
+                        break;
+                    }
+
+                    if (innerIdx == CachedAnonymousDelegateInstructions.Length - 1)
+                    {
+                        specialSections.Add(
+                            new CodeSection(
+                                instructions[idx].Offset, 
+                                instructions[idx + innerIdx].Offset));
+                    }
+                }
+            }
+        }
+
+        public CodeSection[] GetCodeSections()
         {
             if (_codeSections == null)
             {
-                var codeSections = new List<Branch>();
+                var speciallyTreatedCodeSections = FindSpecialCodeSections(_generatedNodes);
+                var codeSections = new List<CodeSection>();
                 var nodes = _generatedNodes.Values.OrderBy(node => node.Instruction.Offset).ToArray();
 
-                var currentId = 0;
                 var currentStart = nodes[0];
                 var currentEnd = nodes[0];
                 int i = 0;
                 while (i < nodes.Length)
                 {
-                    if (IsUnoptimizableBranchingNode(currentEnd, i, nodes) ||
+                    if ((IsUnoptimizableBranchingNode(currentEnd, i, nodes) ||
                         currentEnd is ReturnNode ||
                         currentEnd is ThrowNode ||
-                        NextNodeHasMultipleEnters(i, nodes))
+                        NextNodeHasMultipleEnters(i, nodes)) &&
+                        !speciallyTreatedCodeSections.Any(section => CodeSection.Intersects(section, currentEnd.Instruction.Offset)))
                     {
-                        var codeSection = new Branch(
-                            currentId++,
-                            currentStart,
-                            currentEnd);
-
+                        var codeSection = new CodeSection(currentStart.Instruction.Offset,
+                            currentEnd.Instruction.Offset);
                         codeSections.Add(codeSection);
 
                         if (i + 1 >= nodes.Length)
@@ -107,7 +149,8 @@ namespace UCoverme.ModelBuilder
                 return true;
             }
 
-            if (instruction.OpCode.FlowControl == FlowControl.Cond_Branch || instruction.OpCode.FlowControl == FlowControl.Branch)
+            if (instruction.OpCode.FlowControl == FlowControl.Cond_Branch ||
+                instruction.OpCode.FlowControl == FlowControl.Branch)
             {
                 nodeReturned = new BranchingNode(instruction);
             }
@@ -128,14 +171,54 @@ namespace UCoverme.ModelBuilder
             return false;
         }
 
-        public IEnumerable<InstructionNode> GetNodesWithMultipleEnters()
+        public bool HasMultipleExits(CodeSection section)
         {
-            return _generatedNodes.Values.Where(node => node.EnterCount > 1);
+            return _generatedNodes[section.EndOffset].ExitCount > 1;
         }
 
-        public IEnumerable<InstructionNode> GetNodesWithMultipleExits()
+        public List<Condition> GetExitConditions(CodeSection section)
         {
-            return _generatedNodes.Values.Where(node => node.ExitCount > 1);
+            return _generatedNodes[section.EndOffset]
+                .ExitNodes
+                .Select(exitNode => new Condition(
+                    section.EndOffset, 
+                    exitNode.Instruction.Offset))
+                .ToList();
+        }
+
+        public bool ExitsIntoGeneratedFinally(Condition condition, List<CodeSection> generatedFinallyHandlers)
+        {
+            return _generatedNodes[condition.StartOffset]
+                .ExitNodes
+                .Any(exit =>
+                    generatedFinallyHandlers.Any(handler =>
+                        CodeSection.Intersects(handler, exit.Instruction.Offset)
+                    ));
+        }
+
+        public bool HasMultipleEnters(CodeSection section)
+        {
+            return _generatedNodes[section.StartOffset].EnterCount > 1;
+        }
+
+        public List<Condition> GetEnterConditions(CodeSection section)
+        {
+            return _generatedNodes[section.StartOffset]
+                .NodesEntering
+                .Select(enterNode => new Condition(
+                    enterNode.Instruction.Offset,
+                    section.StartOffset))
+                .ToList();
+        }
+
+        public bool EnteredFromGeneratedFinally(Condition condition, List<CodeSection> generatedFinallyHandlers)
+        {
+            return _generatedNodes[condition.EndOffset]
+                .NodesEntering
+                .Any(enter =>
+                    generatedFinallyHandlers.Any(handler =>
+                        CodeSection.Intersects(handler, enter.Instruction.Offset)
+                    ));
         }
     }
 }

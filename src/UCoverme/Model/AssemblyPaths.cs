@@ -1,5 +1,4 @@
 ﻿using System.IO;
-using System.Runtime;
 using Newtonsoft.Json;
 
 namespace UCoverme.Model

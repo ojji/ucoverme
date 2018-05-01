@@ -10,6 +10,7 @@
     <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="2.2.1" />
     <PackageReference Include="Mono.Cecil" Version="0.10.0" />
     <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+    <PackageReference Include="protobuf-net" Version="2.3.7" />
   </ItemGroup>
 
   <ItemGroup>

@@ -19,7 +19,7 @@ namespace UCoverme.DataCollector.DataCollectors
 
         public string DataCollectorName => "nunit";
 
-        public MethodExecutionData GetDataCollector(string projectPath, int methodId)
+        public MethodExecutionData GetDataCollector(string projectPath, int assemblyId, int methodId)
         {
             lock (LockObject)
             {
@@ -29,7 +29,7 @@ namespace UCoverme.DataCollector.DataCollectors
                 }
 
                 currentContext.SetProjectPath(projectPath);
-                return currentContext.MethodEntered(methodId);
+                return currentContext.MethodEntered(assemblyId, methodId);
             }
         }
 

@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.TestPlatform.ObjectModel" Version="15.7.0" />
+    <PackageReference Include="protobuf-net" Version="2.3.7" />
   </ItemGroup>
 
 </Project>

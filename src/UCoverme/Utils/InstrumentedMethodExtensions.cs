@@ -29,12 +29,12 @@ namespace UCoverme.Utils
         {
             builder.AppendLine("\n----------\nConditions\n----------");
             var conditions = method.Conditions
-                .OrderBy(lp => lp.Start.Instruction.Offset)
-                .ThenBy(lp => lp.Target.Instruction.Offset)
-                .Select((lp, idx) =>
+                .OrderBy(condition => condition.StartOffset)
+                .ThenBy(condition => condition.EndOffset)
+                .Select((condition, idx) =>
                 {
-                    var startBranch = method.Branches.First(b => b.EndOffset == lp.Start.Instruction.Offset);
-                    var targetBranch = method.Branches.First(b => b.StartOffset == lp.Target.Instruction.Offset);
+                    var startBranch = method.Branches.First(branch => branch.EndOffset == condition.StartOffset);
+                    var targetBranch = method.Branches.First(branch => branch.StartOffset == condition.EndOffset);
 
                     return new
                     {
@@ -47,7 +47,7 @@ namespace UCoverme.Utils
             foreach (var condition in conditions)
             {
                 builder.AppendLine(
-                    $"Condition #{condition.ConditionId + 1}: [branch #{condition.StartBranch.Id + 1} --> branch #{condition.TargetBranch.Id + 1}]");
+                    $"Condition #{condition.ConditionId + 1}: [branch #{condition.StartBranch.Id} --> branch #{condition.TargetBranch.Id}]");
             }
         }
 
@@ -55,7 +55,7 @@ namespace UCoverme.Utils
             InstrumentedSequencePoint[] sequencePoints)
         {
             builder.AppendLine(
-                $"--- Branch #{branch.Id + 1}, start: {branch.StartOffset}, end: {branch.EndOffset} -------");
+                $"--- Branch #{branch.Id}, start: {branch.StartOffset}, end: {branch.EndOffset} -------");
             var branchInstructions = instructions
                 .SkipWhile(i => i.Offset < branch.StartOffset)
                 .TakeWhile(i => i.Offset <= branch.EndOffset);

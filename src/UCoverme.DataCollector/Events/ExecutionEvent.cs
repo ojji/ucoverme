@@ -1,10 +1,19 @@
 ﻿using System;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
+using ProtoBuf;
 
 namespace UCoverme.DataCollector.Events
 {
+    [ProtoContract(SkipConstructor = true)]
+    [ProtoInclude(2, typeof(TestCaseStartedEvent))]
+    [ProtoInclude(3, typeof(TestCaseEndedEvent))]
+    [ProtoInclude(4, typeof(BranchEnteredEvent))]
+    [ProtoInclude(5, typeof(SequencePointHitEvent))]
+    [ProtoInclude(6, typeof(BranchExitedEvent))]
+    [ProtoInclude(7, typeof(MethodEnteredEvent))]
     public class ExecutionEvent
     {
+        [ProtoMember(1, IsRequired = true)]
         public ExecutionEventType ExecutionEventType { get; }
 
         protected ExecutionEvent(ExecutionEventType executionEventType)
@@ -22,24 +31,24 @@ namespace UCoverme.DataCollector.Events
             return new TestCaseEndedEvent(result);
         }
 
-        public static ExecutionEvent BranchEntered(int methodId, int branchId)
+        public static ExecutionEvent BranchEntered(int assemblyId, int methodId, int branchId)
         {
-            return new BranchEnteredEvent(methodId, branchId);
+            return new BranchEnteredEvent(assemblyId, methodId, branchId);
         }
 
-        public static ExecutionEvent SequencePointHit(int methodId, int sequencePointId)
+        public static ExecutionEvent SequencePointHit(int assemblyId, int methodId, int sequencePointId)
         {
-            return new SequencePointHitEvent(methodId, sequencePointId);
+            return new SequencePointHitEvent(assemblyId, methodId, sequencePointId);
         }
 
-        public static ExecutionEvent BranchExited(int methodId, int branchId)
+        public static ExecutionEvent BranchExited(int assemblyId, int methodId, int branchId)
         {
-            return new BranchExitedEvent(methodId, branchId);
+            return new BranchExitedEvent(assemblyId, methodId, branchId);
         }
 
-        public static ExecutionEvent MethodEntered(int methodId)
+        public static ExecutionEvent MethodEntered(int assemblyId, int methodId)
         {
-            return new MethodEnteredEvent(methodId);
+            return new MethodEnteredEvent(assemblyId, methodId);
         }
     }
 }

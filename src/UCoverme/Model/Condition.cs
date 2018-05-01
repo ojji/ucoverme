@@ -1,30 +1,30 @@
 ﻿using System;
-using UCoverme.ModelBuilder.Nodes;
+using Newtonsoft.Json;
 
 namespace UCoverme.Model
 {
-    public class Condition : IEquatable<Condition>
+    public class Condition : ICodeSection, IEquatable<Condition>
     {
-        public InstructionNode Start { get; }
-        public InstructionNode Target { get; }
+        public int StartOffset { get; }
+        public int EndOffset { get; }
 
-        public Condition(InstructionNode start, InstructionNode target)
+        [JsonConstructor]
+        public Condition(int startOffset, int endOffset)
         {
-            Start = start;
-            Target = target;
+            StartOffset = startOffset;
+            EndOffset = endOffset;
         }
-
+        
         public override string ToString()
         {
-            string start = Start == null ? "no start node" : Start.ToString();
-            return $"{start}  -->  {Target}";
+            return $"{StartOffset} --> {EndOffset}";
         }
 
         public bool Equals(Condition other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Equals(Start, other.Start) && Equals(Target, other.Target);
+            return Equals(StartOffset, other.StartOffset) && Equals(EndOffset, other.EndOffset);
         }
 
         public override bool Equals(object obj)
@@ -39,7 +39,7 @@ namespace UCoverme.Model
         {
             unchecked
             {
-                return ((Start != null ? Start.GetHashCode() : 0) * 397) ^ (Target != null ? Target.GetHashCode() : 0);
+                return (StartOffset.GetHashCode() * 397) ^ EndOffset.GetHashCode();
             }
         }
     }

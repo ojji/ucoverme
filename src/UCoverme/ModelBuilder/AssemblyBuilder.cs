@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using Mono.Cecil;
 using UCoverme.Model;
 using UCoverme.ModelBuilder.Filters;
@@ -9,16 +10,21 @@ using UCoverme.Utils;
 
 namespace UCoverme.ModelBuilder
 {
-    public class InstrumentedAssemblyBuilder
+    public class AssemblyBuilder
     {
         public string FullyQualifiedAssemblyName { get; }
         public AssemblyPaths AssemblyPaths { get; }
+        public string AssemblyHash { get; }
+        public InstrumentedFile[] Files { get; set; }
+        public InstrumentedClass[] Classes { get; set; }
 
         private readonly Dictionary<int, MethodDefinition> _methodMapping;
+        private static int _assemblyId = 0;
 
-        private InstrumentedAssemblyBuilder(AssemblyPaths assemblyPaths, bool shouldReadSymbols)
+        private AssemblyBuilder(AssemblyPaths assemblyPaths, bool shouldReadSymbols)
         {
             AssemblyPaths = assemblyPaths;
+            AssemblyHash = GetAssemblyHash(assemblyPaths.OriginalAssemblyPath);
 
             using (var assemblyDefinition = AssemblyDefinition.ReadAssembly(assemblyPaths.OriginalAssemblyPath,
                 new ReaderParameters
@@ -29,6 +35,26 @@ namespace UCoverme.ModelBuilder
                 FullyQualifiedAssemblyName = assemblyDefinition.FullName;
                 _methodMapping = new Dictionary<int, MethodDefinition>();
                 BuildMethodMappings(assemblyDefinition);
+            }
+
+            if (shouldReadSymbols)
+            {
+                Files = GetFiles();
+                Classes = GetClasses();
+            }
+            else
+            {
+                Files = new InstrumentedFile[0];
+                Classes = new InstrumentedClass[0];
+            }
+        }
+
+        private string GetAssemblyHash(string assemblyPath)
+        {
+            using (var reader = new StreamReader(assemblyPath))
+            using (var shaProvider = new SHA1CryptoServiceProvider())
+            {
+                return BitConverter.ToString(shaProvider.ComputeHash(reader.BaseStream));
             }
         }
 
@@ -80,7 +106,11 @@ namespace UCoverme.ModelBuilder
             var methodName = methodDefinition.FullName;
             var methodId = methodDefinition.MetadataToken.ToInt32();
 
-            var methodBuilder = InstrumentedMethodBuilder.Build(methodDefinition);
+            var fileInMethod = methodDefinition.DebugInformation.SequencePoints.Select(sp => sp.Document.Url).Distinct().SingleOrDefault();
+
+            var fileId = fileInMethod == null ? (int?) null : Files.Single(f => f.Path == fileInMethod).Id;
+
+            var methodBuilder = MethodBuilder.Build(methodDefinition, fileId);
             return new InstrumentedMethod(
                 methodName,
                 methodId,
@@ -94,26 +124,15 @@ namespace UCoverme.ModelBuilder
         {
             var isInstrumentable = IsInstrumentable(assemblyPath, out var skipReason);
             var assemblyBuilder =
-                new InstrumentedAssemblyBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), isInstrumentable);
+                new AssemblyBuilder(AssemblyPaths.GetAssemblyPaths(assemblyPath), isInstrumentable);
 
-            InstrumentedAssembly instrumentedAssembly;
-
-            if (isInstrumentable)
-            {
-                instrumentedAssembly = new InstrumentedAssembly(
-                    assemblyBuilder.FullyQualifiedAssemblyName,
-                    assemblyBuilder.AssemblyPaths,
-                    assemblyBuilder.GetFiles(),
-                    assemblyBuilder.GetClasses());
-            }
-            else
-            {
-                instrumentedAssembly = new InstrumentedAssembly(
-                    assemblyBuilder.FullyQualifiedAssemblyName,
-                    assemblyBuilder.AssemblyPaths,
-                    new InstrumentedFile[0],
-                    new InstrumentedClass[0]);
-            }
+            var instrumentedAssembly = new InstrumentedAssembly(
+                _assemblyId++,
+                assemblyBuilder.FullyQualifiedAssemblyName,
+                assemblyBuilder.AssemblyPaths,
+                assemblyBuilder.AssemblyHash,
+                assemblyBuilder.Files,
+                assemblyBuilder.Classes);
 
             if (skipReason != SkipReason.NoSkip)
             {

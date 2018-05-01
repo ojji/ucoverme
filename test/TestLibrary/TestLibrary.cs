@@ -186,5 +186,53 @@ namespace TestLibrary
             }
             return value;
         }
+
+        public string HasSimpleUsingStatementInsideFinally()
+        {
+            string value;
+            try
+            {
+
+            }
+            catch (ArgumentException)
+            {
+            }
+            finally
+            {
+                using (var stream = new MemoryStream())
+                {
+                    var x = stream.Length;
+                    value = x > 1000 ? "yes" : "no";
+                }
+            }
+            return value;
+        }
+
+        public string TryCatchFinallyTest()
+        {
+            string value;
+            try
+            {
+                value = "try";
+                Console.WriteLine("Try!");
+            }
+            catch (ArgumentNullException ex)
+            {
+                value = "catch 1";
+                Console.WriteLine("Catch 1!");
+            }
+            catch (Exception e)
+            {
+                value = "catch 2";
+                Console.WriteLine("Catch 2!");
+            }
+            finally
+            {
+                value = "finally";
+                Console.WriteLine("Finally!");
+            }
+
+            return value;
+        }
     }
 }

@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 using UCoverme.DataCollector;
+using UCoverme.DataCollector.Summary;
 using UCoverme.Instrumentation;
+using UCoverme.Report;
 
 namespace UCoverme.Model
 {
@@ -36,11 +38,13 @@ namespace UCoverme.Model
                     Console.ForegroundColor = ConsoleColor.Yellow;
                     Console.Write($"[DISABLED - {model.SkipReason.ToString()}] ");
                     Console.ResetColor();
-                    Console.WriteLine($"{model.FullyQualifiedAssemblyName} - {model.AssemblyPaths.OriginalAssemblyPath}");
+                    Console.WriteLine(
+                        $"{model.FullyQualifiedAssemblyName} - {model.AssemblyPaths.OriginalAssemblyPath}");
                 }
                 else
                 {
-                    Console.WriteLine($"{model.FullyQualifiedAssemblyName} - {model.AssemblyPaths.OriginalAssemblyPath}");
+                    Console.WriteLine(
+                        $"{model.FullyQualifiedAssemblyName} - {model.AssemblyPaths.OriginalAssemblyPath}");
 
                     CopyDataCollectorAssembly(model.AssemblyPaths);
                     var instrumenter = new Instrumenter(model);
@@ -63,6 +67,11 @@ namespace UCoverme.Model
             }
 
             DeleteDataCollectorAssemblies();
+        }
+
+        public CoverageReport GetCoverageReport(IReadOnlyList<TestExecutionSummary> executionSummaries)
+        {
+            return new CoverageReport(this, executionSummaries);
         }
 
         private void DeleteDataCollectorAssemblies()

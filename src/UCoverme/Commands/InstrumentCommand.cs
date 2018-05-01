@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using McMaster.Extensions.CommandLineUtils;
-using Newtonsoft.Json;
 using UCoverme.DataCollector.Utils;
 using UCoverme.Model;
 using UCoverme.ModelBuilder;
@@ -19,7 +18,6 @@ namespace UCoverme.Commands
         public override string Description => "Sets up instrumentation on a target assembly.";
 
         private readonly PathOption _targetOption;
-        private readonly CommandOption _coverageDirectoryOption;
         private readonly CommandOption _disableDefaultFilters;
         private readonly FilterOption _filterOption;
 
@@ -46,19 +44,12 @@ namespace UCoverme.Commands
                 ShowInHelpText = true
             };
 
-            _coverageDirectoryOption = new CommandOption("--coverage-directory", CommandOptionType.SingleValue)
-            {
-                Description = "Sets the directory where the coverage files and the necessary artifacts are created.",
-                ShowInHelpText = true
-            };
-
             _dumpMethodsOption = new CommandOption("--dump", CommandOptionType.NoValue);
             Options.Add(_dumpMethodsOption);
         
             Options.Add(_targetOption);
             Options.Add(_disableDefaultFilters);
             Options.Add(_filterOption);
-            Options.Add(_coverageDirectoryOption);
         }
 
         public override void Execute()
@@ -95,7 +86,7 @@ namespace UCoverme.Commands
 
             foreach (var path in targetPaths)
             {
-                var model = InstrumentedAssemblyBuilder.Build(path, filters);
+                var model = AssemblyBuilder.Build(path, filters);
                 uCovermeProject.AddAssembly(model);
             }
 
@@ -111,24 +102,6 @@ namespace UCoverme.Commands
                     logFile.Log(method.Debug());
                 }
             }
-        }
-
-        private string GetCoverageDirectory()
-        {
-            if (!_coverageDirectoryOption.HasValue())
-            {
-                return Path.Combine(Directory.GetCurrentDirectory(), "coverage");
-            }
-
-            var pathValue = _coverageDirectoryOption.Value();
-            if (!Path.IsPathRooted(pathValue))
-            {
-                pathValue = Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    pathValue);
-            }
-
-            return pathValue;
         }
     }
 }
