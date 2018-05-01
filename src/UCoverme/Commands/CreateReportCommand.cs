@@ -6,7 +6,6 @@ using System.Xml.Linq;
 using Newtonsoft.Json;
 using ProtoBuf;
 using UCoverme.DataCollector.Summary;
-using UCoverme.DataCollector.Utils;
 using UCoverme.Model;
 using UCoverme.Report;
 
@@ -14,16 +13,10 @@ namespace UCoverme.Commands
 {
     public class CreateReportCommand : UCovermeCommand
     {
-        private string _log = @"d:\projects\ucoverme\coverage\report.log";
         public override string Name => "createreport";
         public override string Description => "Collect the tests sample data and generate a report.";
 
         private int _moduleCounter;
-
-        public CreateReportCommand()
-        {
-            _log.Empty();
-        }
 
         public override void Execute()
         {
