@@ -132,8 +132,8 @@ namespace UCoverme.Report
             var numMethods = numSequencePoints > 0 ? 1 : 0;
             var visitedMethods = numMethods > 0 && method.VisitCount > 0 ? 1 : 0;
             var visitedSequencePoints = method.SequencePoints.Count(sp => !sp.IsHidden && sp.VisitCount > 0);
-            var numBranchPoints = 0; // todo
-            var visitedBranchPoints = 0; // todo
+            var numBranchPoints = method.Branches.Length;
+            var visitedBranchPoints = method.Branches.Count(branch => branch.VisitCount > 0);
             var branchCoverage = CalculateCoverage(numBranchPoints, visitedBranchPoints);
             var sequenceCoverage = CalculateCoverage(numSequencePoints, visitedSequencePoints);
             
