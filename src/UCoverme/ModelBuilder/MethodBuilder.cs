@@ -19,6 +19,7 @@ namespace UCoverme.ModelBuilder
             
             Conditions = GetConditions(NodeCache);
             Branches = MergeGeneratedCodeSections(NodeCache);
+            ApplyBranchIdToConditions(Conditions);
             
             var conditionsWithBranches = Conditions.Select(c =>
                 new 
@@ -64,6 +65,22 @@ namespace UCoverme.ModelBuilder
                     EndBranch = Branches.First(branch =>
                         CodeSection.Intersects(branch, c.EndOffset)),
                 }).ToArray();
+        }
+
+        private void ApplyBranchIdToConditions(Condition[] conditions)
+        {
+            foreach (var condition in conditions)
+            {
+                condition.SetStartBranchId(
+                    Branches
+                        .First(branch =>
+                            CodeSection.Intersects(branch, condition.StartOffset)).Id);
+
+                condition.SetTargetBranchId(
+                    Branches
+                        .First(branch =>
+                            CodeSection.Intersects(branch, condition.EndOffset)).Id);
+            }
         }
 
         private Branch[] MergeGeneratedCodeSections(NodeCache nodeCache)
