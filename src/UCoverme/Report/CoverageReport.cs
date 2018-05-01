@@ -177,12 +177,20 @@ namespace UCoverme.Report
             foreach (var methodExecution in testExecutions.SelectMany(testExecution => testExecution.MethodsExecuted))
             {
                 Stack<ExecutionEvent> branchExecution = new Stack<ExecutionEvent>();
+                List<Condition> possibleConditions = new List<Condition>();
                 foreach (var methodEvent in methodExecution.MethodEvents)
                 {
                     switch (methodEvent.ExecutionEventType)
                     {
                         case ExecutionEventType.BranchEntered:
                         {
+                            var branchEnteredEvent = (BranchEnteredEvent) methodEvent;
+
+                            var conditionHit = possibleConditions.FirstOrDefault(condition =>
+                                condition.TargetBranch == branchEnteredEvent.BranchId);
+                            conditionHit?.Visit();
+                            possibleConditions.Clear();
+
                             branchExecution.Push(methodEvent);
                             break;
                         }
@@ -202,6 +210,13 @@ namespace UCoverme.Report
                                 .First(branch => branch.Id == branchExitedEvent.BranchId);
 
                             branchVisited.Visit();
+
+                            var conditionsToHit = Project.Assemblies
+                                .First(assembly => assembly.AssemblyId == branchExitedEvent.AssemblyId)
+                                .Classes.SelectMany(@class => @class.Methods)
+                                .First(method => method.MethodId == branchExitedEvent.MethodId)
+                                .Conditions.Where(condition => condition.StartBranch == branchExitedEvent.BranchId);
+                            possibleConditions.AddRange(conditionsToHit);
                             break;
                         }
                         case ExecutionEventType.SequencePointHit:
