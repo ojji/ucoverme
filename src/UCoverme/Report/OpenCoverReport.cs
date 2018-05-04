@@ -7,13 +7,15 @@ using UCoverme.Model;
 
 namespace UCoverme.Report
 {
-    public class CoverageReport
+    public class OpenCoverReport
     {
-        public UCovermeProject Project { get; }
+        public OpenCoverModule[] Modules { get; }
+
+        private readonly UCovermeProject _project;
 
         public Summary GetSummaryForProject()
         {
-            var summaries = Project.Assemblies.Where(module => !module.IsSkipped).Select(GetSummaryForAssembly).ToArray();
+            var summaries = _project.Assemblies.Where(module => !module.IsSkipped).Select(GetSummaryForAssembly).ToArray();
 
             var numSequencePoints = summaries.Sum(summary =>
                 summary.NumSequencePoints);
@@ -156,10 +158,11 @@ namespace UCoverme.Report
             };
         }
 
-        public CoverageReport(UCovermeProject project, IReadOnlyList<TestExecutionSummary> testExecutions)
+        public OpenCoverReport(UCovermeProject project, IReadOnlyList<TestExecutionSummary> testExecutions)
         {
-            Project = project;
+            _project = project;
             GenerateSummaries(testExecutions);
+            Modules = project.Assemblies.Select(assembly => new OpenCoverModule(this, assembly)).ToArray();
         }
 
         private void GenerateSummaries(IReadOnlyList<TestExecutionSummary> testExecutions)
@@ -168,7 +171,7 @@ namespace UCoverme.Report
             {
                 if (executionEvent is MethodEnteredEvent methodEntered)
                 {
-                    var instrumentedMethod = Project.Assemblies.First(assembly => assembly.AssemblyId == methodEntered.AssemblyId).Classes
+                    var instrumentedMethod = _project.Assemblies.First(assembly => assembly.AssemblyId == methodEntered.AssemblyId).Classes
                                 .SelectMany(c => c.Methods).First(m => m.MethodId == methodEntered.MethodId);
                     instrumentedMethod.Visit();
                 }
@@ -198,7 +201,7 @@ namespace UCoverme.Report
                         {
                             var branchExitedEvent = (BranchExitedEvent) methodEvent;
                             
-                            var branchVisited = Project
+                            var branchVisited = _project
                                 .Assemblies
                                 .First(assembly => 
                                     assembly.AssemblyId == branchExitedEvent.AssemblyId)
@@ -211,7 +214,7 @@ namespace UCoverme.Report
 
                             branchVisited.Visit();
 
-                            var conditionsToHit = Project.Assemblies
+                            var conditionsToHit = _project.Assemblies
                                 .First(assembly => assembly.AssemblyId == branchExitedEvent.AssemblyId)
                                 .Classes.SelectMany(@class => @class.Methods)
                                 .First(method => method.MethodId == branchExitedEvent.MethodId)
@@ -222,7 +225,7 @@ namespace UCoverme.Report
                         case ExecutionEventType.SequencePointHit:
                         {
                             var sequencePointHitEvent = (SequencePointHitEvent) methodEvent;
-                            var sequencePointHit = Project
+                            var sequencePointHit = _project
                                 .Assemblies
                                 .First(assembly =>
                                     assembly.AssemblyId == sequencePointHitEvent.AssemblyId)

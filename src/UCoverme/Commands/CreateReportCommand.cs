@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -37,10 +36,10 @@ namespace UCoverme.Commands
 
                 XElement modules = new XElement(XName.Get("Modules"));
 
-                foreach (var module in coverageReport.Project.Assemblies)
+                foreach (var openCoverModule in coverageReport.Modules)
                 {
                     _moduleCounter = 0;
-                    XElement moduleElement = CreateModuleElement(coverageReport, module);
+                    XElement moduleElement = CreateModuleElement(openCoverModule);
                     modules.Add(moduleElement);
                 }
 
@@ -54,7 +53,7 @@ namespace UCoverme.Commands
             }
         }
 
-        private XElement CreateSummaryElement(Summary summary)
+        private static XElement CreateSummaryElement(Summary summary)
         {
             return new XElement(
                 XName.Get("Summary"),
@@ -73,34 +72,33 @@ namespace UCoverme.Commands
                 );
         }
 
-        private XElement CreateModuleElement(CoverageReport report, InstrumentedAssembly assembly)
+        private XElement CreateModuleElement(OpenCoverModule module)
         {
             var moduleElement = new XElement(XName.Get("Module"),
                             new XAttribute(
                                 XName.Get("hash"),
-                                assembly.Hash));
+                                module.Hash));
 
-            moduleElement.Add(new XElement(XName.Get("ModulePath"), assembly.AssemblyPaths.OriginalAssemblyPath));
-            // todo: fix this
-            moduleElement.Add(new XElement(XName.Get("ModuleTime"), DateTime.Now.ToString("o")));
-            moduleElement.Add(new XElement(XName.Get("ModuleName"), assembly.FullyQualifiedAssemblyName.Split(',').First()));
+            moduleElement.Add(new XElement(XName.Get("ModulePath"), module.ModulePath));
+            moduleElement.Add(new XElement(XName.Get("ModuleTime"), module.ModuleTime));
+            moduleElement.Add(new XElement(XName.Get("ModuleName"), module.ModuleName));
 
-            if (assembly.IsSkipped)
+            if (module.IsSkipped)
             {
-                moduleElement.Add(new XAttribute(XName.Get("skippedDueTo"), assembly.SkipReason.ToString()));
+                moduleElement.Add(new XAttribute(XName.Get("skippedDueTo"), module.SkipReason.ToString()));
             }
             else
             {
-                moduleElement.Add(CreateSummaryElement(report.GetSummaryForAssembly(assembly)));
-                moduleElement.Add(CreateFilesElement(assembly.Files));
+                moduleElement.Add(CreateSummaryElement(module.Summary));
+                moduleElement.Add(CreateFilesElement(module.Files));
             }
 
             var classesElement = new XElement(XName.Get("Classes"));
-            if (!assembly.IsSkipped)
+            if (!module.IsSkipped)
             {
-                foreach (var instrumentedClass in assembly.Classes)
+                foreach (var openCoverClass in module.Classes)
                 {
-                    var classElement = CreateClassElement(report, instrumentedClass);
+                    var classElement = CreateClassElement(openCoverClass);
                     classesElement.Add(classElement);
                 }
             }
@@ -126,46 +124,41 @@ namespace UCoverme.Commands
             return filesElement;
         }
 
-        private XElement CreateClassElement(CoverageReport report, InstrumentedClass instrumentedClass)
+        private XElement CreateClassElement(OpenCoverClass openCoverClass)
         {
             var classElement = new XElement(XName.Get("Class"));
-            classElement.Add(CreateSummaryElement(report.GetSummaryForClass(instrumentedClass)));
-            classElement.Add(new XElement(XName.Get("FullName"), instrumentedClass.Name));
+            classElement.Add(CreateSummaryElement(openCoverClass.Summary));
+            classElement.Add(new XElement(XName.Get("FullName"), openCoverClass.Name));
             
             var methodsElement = new XElement(XName.Get("Methods"));
-            foreach (var method in instrumentedClass.Methods)
+            foreach (var openCoverMethod in openCoverClass.Methods)
             {
-                methodsElement.Add(CreateMethodElement(report, method));
+                methodsElement.Add(CreateMethodElement(openCoverMethod));
             }
 
             classElement.Add(methodsElement);
             return classElement;
         }
 
-        private XElement CreateMethodElement(CoverageReport report, InstrumentedMethod method)
+        private XElement CreateMethodElement(OpenCoverMethod method)
         {
-            var summary = report.GetSummaryForMethod(method);
-
             var methodElement = new XElement(XName.Get("Method"));
-            // todo: method attributes
-            methodElement.Add(new XAttribute(XName.Get("visited"), summary.VisitedMethods == 1 ? "true" : "false"));
-            methodElement.Add(new XAttribute(XName.Get("cyclomaticComplexity"), summary.MinCyclomaticComplexity));
-            methodElement.Add(new XAttribute(XName.Get("nPathComplexity"), CalculateNPathComplexity(method)));
-            methodElement.Add(new XAttribute(XName.Get("sequenceCoverage"), summary.SequenceCoverage));
-            methodElement.Add(new XAttribute(XName.Get("branchCoverage"), summary.BranchCoverage));
-            var isConstructor = method.Name.EndsWith("::.ctor()") || method.Name.EndsWith("::.cctor()");
+            methodElement.Add(new XAttribute(XName.Get("visited"), method.Summary.VisitedMethods == 1 ? "true" : "false"));
+            methodElement.Add(new XAttribute(XName.Get("cyclomaticComplexity"), method.Summary.MinCyclomaticComplexity));
+            methodElement.Add(new XAttribute(XName.Get("nPathComplexity"), method.NPathComplexity));
+            methodElement.Add(new XAttribute(XName.Get("sequenceCoverage"), method.Summary.SequenceCoverage));
+            methodElement.Add(new XAttribute(XName.Get("branchCoverage"), method.Summary.BranchCoverage));
             methodElement.Add(new XAttribute(XName.Get("isConstructor"), 
-                isConstructor ? "true" : "false"));
-            methodElement.Add(new XAttribute(XName.Get("isStatic"), "false")); // todo
-            methodElement.Add(new XAttribute(XName.Get("isGetter"), "false")); // todo
-            methodElement.Add(new XAttribute(XName.Get("isSetter"), "false")); // todo
-            // ----
+                method.IsConstructor ? "true" : "false"));
+            methodElement.Add(new XAttribute(XName.Get("isStatic"), method.IsStatic ? "true" : "false"));
+            methodElement.Add(new XAttribute(XName.Get("isGetter"), method.IsGetter ? "true" : "false"));
+            methodElement.Add(new XAttribute(XName.Get("isSetter"), method.IsSetter ? "true" : "false"));
 
-            methodElement.Add(CreateSummaryElement(summary));
+            methodElement.Add(CreateSummaryElement(method.Summary));
             methodElement.Add(new XElement(XName.Get("MetadataToken"), method.MethodId));
             methodElement.Add(new XElement(XName.Get("Name"), method.Name));
 
-            if (method.HasVisibleSequencePoint())
+            if (method.HasVisibleSequencePoint)
             {
                 methodElement.Add(new XElement(XName.Get("FileRef"),
                 new XAttribute(XName.Get("uid"), method.SequencePoints.First(sp => sp.FileId.HasValue).FileId)));
@@ -175,7 +168,7 @@ namespace UCoverme.Commands
 
             int localCounter = 0;
             int methodPointId = -1;
-            foreach (var sequencePoint in method.SequencePoints.Where(sequencePoint => !sequencePoint.IsHidden).OrderBy(sp => sp.StartOffset))
+            foreach (var sequencePoint in method.SequencePoints)
             {
                 _moduleCounter++;
                 if (localCounter == 0)
@@ -192,21 +185,20 @@ namespace UCoverme.Commands
                     new XAttribute(XName.Get("sc"), sequencePoint.StartColumn),
                     new XAttribute(XName.Get("el"), sequencePoint.EndLine),
                     new XAttribute(XName.Get("ec"), sequencePoint.EndColumn),
-                    new XAttribute(XName.Get("bec"), 0), // TODO
-                    new XAttribute(XName.Get("bev"), 0), // TODO
+                    new XAttribute(XName.Get("bec"), sequencePoint.BranchExitCount),
+                    new XAttribute(XName.Get("bev"), sequencePoint.BranchExitVisited),
                     new XAttribute(XName.Get("fileid"), sequencePoint.FileId));
 
                 sequencePointsElement.Add(sequencePointElement);
             }
             methodElement.Add(sequencePointsElement);
 
-            // todo branching points
-            var branchPointsElement = new XElement(XName.Get("BranchPoints"));
+            var branchPointsElement = CreateBranchingPointsElement(method.BranchingPoints);
             methodElement.Add(branchPointsElement);
 
             XElement methodPointElement;
-            var methodPoint = method.SequencePoints.FirstOrDefault();
 
+            var methodPoint = method.MethodPoint;
             if (methodPoint != null && !methodPoint.IsHidden)
             {
                 // TODO xsi:type
@@ -220,8 +212,8 @@ namespace UCoverme.Commands
                     new XAttribute(XName.Get("sc"), methodPoint.StartColumn),
                     new XAttribute(XName.Get("el"), methodPoint.EndLine),
                     new XAttribute(XName.Get("ec"), methodPoint.EndColumn),
-                    new XAttribute(XName.Get("bec"), 0), // TODO
-                    new XAttribute(XName.Get("bev"), 0), // TODO
+                    new XAttribute(XName.Get("bec"), methodPoint.BranchExitCount),
+                    new XAttribute(XName.Get("bev"), methodPoint.BranchExitVisited),
                     new XAttribute(XName.Get("fileid"), methodPoint.FileId)
                     );
             }
@@ -239,13 +231,7 @@ namespace UCoverme.Commands
 
             return methodElement;
         }
-
-        private int CalculateNPathComplexity(InstrumentedMethod method)
-        {
-            // todo
-            return 0;
-        }
-
+        
         private Dictionary<UCovermeProject, List<TestExecutionSummary>> GetProjectsWithSummaries(
             string coverageDirectory)
         {
@@ -277,6 +263,35 @@ namespace UCoverme.Commands
                 }
             }
             return summariesDictionary.ToDictionary(d => d.Value.project, d => d.Value.testExecutionSummaries);
+        }
+
+        private XElement CreateBranchingPointsElement(IReadOnlyCollection<OpenCoverBranchingPoint> branchingPoints)
+        {
+            var branchPointsElement = new XElement(XName.Get("BranchPoints"));
+
+            if (branchingPoints.Count == 0)
+            {
+                return branchPointsElement;
+            }
+
+            int ordinal = 0;
+            foreach (var branchPoint in branchingPoints)
+            {
+                var branchPointElement = new XElement(
+                    XName.Get("BranchPoint"),
+                    new XAttribute(XName.Get("vc"), branchPoint.VisitCount),
+                    new XAttribute(XName.Get("uspid"), _moduleCounter++),
+                    new XAttribute(XName.Get("ordinal"), ordinal++),
+                    new XAttribute(XName.Get("offset"), branchPoint.StartOffset),
+                    new XAttribute(XName.Get("sl"), branchPoint.StartLine),
+                    new XAttribute(XName.Get("path"), branchPoint.Path),
+                    new XAttribute(XName.Get("offsetend"), branchPoint.EndOffset),
+                    new XAttribute(XName.Get("fileid"), branchPoint.FileId));
+
+                branchPointsElement.Add(branchPointElement);
+            }
+
+            return branchPointsElement;
         }
     }
 }

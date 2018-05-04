@@ -20,51 +20,6 @@ namespace UCoverme.ModelBuilder
             Conditions = GetConditions(NodeCache);
             Branches = MergeGeneratedCodeSections(NodeCache);
             ApplyBranchIdToConditions(Conditions);
-            
-            var conditionsWithBranches = Conditions.Select(c =>
-                new 
-                {
-                    c.StartOffset,
-                    StartBranch = Branches.First(branch => 
-                        CodeSection.Intersects(branch, c.StartOffset)),
-                    c.EndOffset,
-                    EndBranch = Branches.First(branch => 
-                        CodeSection.Intersects(branch, c.EndOffset)),
-                }).ToArray();
-
-            var branchingPoints = Conditions.Where(condition =>
-                {
-                    return Conditions.Any(otherCondition =>
-                        otherCondition.StartOffset == condition.StartOffset &&
-                        otherCondition.EndOffset != condition.EndOffset);
-                })
-                .Select(c =>
-                new
-                {
-                    c.StartOffset,
-                    StartBranch = Branches.First(branch =>
-                        CodeSection.Intersects(branch, c.StartOffset)),
-                    c.EndOffset,
-                    EndBranch = Branches.First(branch =>
-                        CodeSection.Intersects(branch, c.EndOffset)),
-                }).ToArray();
-
-            var nonBranchingPoints = Conditions.Where(condition =>
-                {
-                    return !Conditions.Any(otherCondition =>
-                        otherCondition.StartOffset == condition.StartOffset &&
-                        otherCondition.EndOffset != condition.EndOffset);
-                })
-                .Select(c =>
-                new
-                {
-                    c.StartOffset,
-                    StartBranch = Branches.First(branch =>
-                        CodeSection.Intersects(branch, c.StartOffset)),
-                    c.EndOffset,
-                    EndBranch = Branches.First(branch =>
-                        CodeSection.Intersects(branch, c.EndOffset)),
-                }).ToArray();
         }
 
         private void ApplyBranchIdToConditions(Condition[] conditions)

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using System.Threading;
 using Mono.Cecil.Cil;
 using Newtonsoft.Json;
@@ -18,7 +17,6 @@ namespace UCoverme.Model
 
         [JsonIgnore] 
         public int VisitCount => _visitCount;
-
         private int _visitCount;
 
         [JsonIgnore]
@@ -70,11 +68,6 @@ namespace UCoverme.Model
         public void ApplyFilter(IFilter filter)
         {
             throw new NotImplementedException();
-        }
-
-        public bool HasVisibleSequencePoint()
-        {
-            return SequencePoints.Any(sp => !sp.IsHidden);
         }
 
         public int CalculateCyclomaticComplexity()

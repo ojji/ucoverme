@@ -11,8 +11,7 @@ namespace UCoverme.ModelBuilder
         private readonly Dictionary<int, InstructionNode> _generatedNodes;
         private CodeSection[] _codeSections;
         
-        private static readonly OpCode[] CachedAnonymousDelegateInstructions = new[]
-        {
+        private static readonly OpCode[] CachedAnonymousDelegateInstructions = {
             OpCodes.Ldsfld,
             OpCodes.Dup,
             OpCodes.Brtrue_S,

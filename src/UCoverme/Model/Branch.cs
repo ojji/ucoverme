@@ -3,23 +3,19 @@ using Newtonsoft.Json;
 
 namespace UCoverme.Model
 {
-    public class Branch : ICodeSection
+    public class Branch : CodeSection
     {
         public int Id { get; }
-        public int StartOffset { get; }
-        public int EndOffset { get; }
-
+        
         [JsonIgnore] 
         public int VisitCount => _visitCount;
         [JsonIgnore]
         private int _visitCount;
 
         [JsonConstructor]
-        public Branch(int id, int startOffset, int endOffset)
+        public Branch(int id, int startOffset, int endOffset) : base(startOffset, endOffset)
         {
             Id = id;
-            StartOffset = startOffset;
-            EndOffset = endOffset;
             _visitCount = 0;
         }
 

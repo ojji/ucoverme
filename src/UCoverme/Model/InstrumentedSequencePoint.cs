@@ -3,11 +3,9 @@ using Newtonsoft.Json;
 
 namespace UCoverme.Model
 {
-    public class InstrumentedSequencePoint : ICodeSection
+    public class InstrumentedSequencePoint : CodeSection
     {
         public int Id { get; }
-        public int StartOffset { get; }
-        public int EndOffset { get; }
         public int? FileId { get; }
         public int StartLine { get; }
         public int EndLine { get; }
@@ -27,11 +25,9 @@ namespace UCoverme.Model
         public InstrumentedSequencePoint(int id, int? fileId, 
             int startOffset, int endOffset,
             int startLine, int endLine, 
-            int startColumn, int endColumn)
+            int startColumn, int endColumn) : base(startOffset, endOffset)
         {
             Id = id;
-            StartOffset = startOffset;
-            EndOffset = endOffset;
             FileId = fileId;
             StartLine = startLine;
             EndLine = endLine;

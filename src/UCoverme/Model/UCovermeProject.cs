@@ -69,9 +69,9 @@ namespace UCoverme.Model
             DeleteDataCollectorAssemblies();
         }
 
-        public CoverageReport GetCoverageReport(IReadOnlyList<TestExecutionSummary> executionSummaries)
+        public OpenCoverReport GetCoverageReport(IReadOnlyList<TestExecutionSummary> executionSummaries)
         {
-            return new CoverageReport(this, executionSummaries);
+            return new OpenCoverReport(this, executionSummaries);
         }
 
         private void DeleteDataCollectorAssemblies()
